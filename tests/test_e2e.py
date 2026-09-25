@@ -22,8 +22,35 @@ SUBMITTED_AT = datetime(2026, 7, 26, 14, 30, 0)
 
 
 ID_INVENTORY = 502
-ID_UNIT = 77
+ID_EXTERNAL_USER = 12345
 INVENTORY_MARKDOWN = "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+
+REPORT_BODY = {
+    "id_external_context_inventory": ID_INVENTORY,
+    "inventory": INVENTORY_MARKDOWN,
+    "id_external_user": ID_EXTERNAL_USER,
+    "gases": [{"id": 1, "name": "CO2"}],
+    "scopes": [{"id": 1, "name": "Escopo 1"}],
+    "categories": [{"id": 1, "name": "Combustão estacionária", "classification": None}],
+}
+
+EXTRACTED_INVENTORY_JSON = {
+    "description": "Boiler-dominated inventory",
+    "start_period": "2025-01-01",
+    "end_period": "2025-12-31",
+    "emissions": [
+        {
+            "quantity_co2e": 12400.0,
+            "methodology_description": "stationary combustion",
+            "supplier_data_percentage": None,
+            "gas": 1,
+            "scope": 1,
+            "category": None,
+            "is_upstream": None,
+            "is_reduction": False,
+        }
+    ],
+}
 
 
 TOOLED_AGENTS = {
@@ -117,11 +144,6 @@ class InMemoryImprovementPlanRepository:
             raise ValueError(f"Improvement plan with id_external_inventory {id_external_inventory} not found.")
         return plan
 
-    def get_last_by_id_external_unit(self, id_external_unit, limit):
-        """Retrieve the latest plans for an external unit, up to the requested limit."""
-        of_the_unit = [p for p in self.plans if p.id_external_unit == id_external_unit]
-        return sorted(of_the_unit, key=lambda plan: plan.updated_at, reverse=True)[:limit]
-
     def create(self, improvement_plan):
         """Persist an improvement plan and return the stored entity."""
         improvement_plan.id = f"plan-{len(self.plans) + 1}"
@@ -129,18 +151,15 @@ class InMemoryImprovementPlanRepository:
         self.plans.append(improvement_plan)
         return improvement_plan
 
-
-class InMemoryInventoryRepository:
-    """Stands in for the ms-inventory microservice the gateway calls."""
-
-    def __init__(self, markdown=INVENTORY_MARKDOWN):
-        self.markdown = markdown
-        self.resolved = []
-
-    def get_inventory_markdown(self, id_external_inventory):
-        """Retrieve the inventory content as Markdown from the inventory service."""
-        self.resolved.append(id_external_inventory)
-        return self.markdown
+    def replace(self, improvement_plan):
+        """Replace the plan stored for the same external inventory identifier."""
+        for index, existing in enumerate(self.plans):
+            if existing.id_external_inventory == improvement_plan.id_external_inventory:
+                improvement_plan.id = existing.id
+                improvement_plan.updated_at = improvement_plan.updated_at or datetime.utcnow()
+                self.plans[index] = improvement_plan
+                return improvement_plan
+        return self.create(improvement_plan)
 
 
 @pytest.fixture
@@ -194,27 +213,24 @@ def report_app(live_app, monkeypatch):
     """Build the report test application with isolated dependencies."""
     client, api_main, user_repository, _ = live_app
     plan_repository = InMemoryImprovementPlanRepository()
-    inventory_repository = InMemoryInventoryRepository()
 
     client.app.dependency_overrides[improvement_plan_handlers.get_improvement_plan_service] = (
-        lambda: ImprovementPlanService(plan_repository, inventory_repository)
+        lambda: ImprovementPlanService(plan_repository)
     )
 
     monkeypatch.setattr(improvement_plan_handlers, "UserRepository", lambda db: user_repository)
 
-    return client, api_main, plan_repository, inventory_repository
+    return client, api_main, plan_repository
 
 
-def request_report(client, id_external_inventory=ID_INVENTORY, id_external_unit=ID_UNIT, id_user="u1"):
+def request_report(client, body=None):
     """Submit a report request to the test application."""
-    return client.post(
-        "/aether-api/v1/ai/report",
-        params={
-            "id_external_inventory": id_external_inventory,
-            "id_external_unit": id_external_unit,
-            "id_user": id_user,
-        },
-    )
+    return client.post("/aether-api/v1/ai/report", json=body or REPORT_BODY)
+
+
+def get_report(client, id_external_inventory=ID_INVENTORY):
+    """Read the stored textual plan for an inventory."""
+    return client.get(f"/aether-api/v1/ai/report/{id_external_inventory}")
 
 
 def test_lifespan_configures_the_sdk_from_environment(live_app, fake_sdk):
@@ -621,67 +637,63 @@ def test_send_message_returns_502_when_no_reviewer_approved_a_draft(live_app, fa
     assert len(session_repository.get_session_messages("s1")) == 1
 
 
-def test_a_report_answers_with_the_plan_it_persisted(report_app):
-    """Verify that a report answers with the plan it persisted."""
-    client, _, plan_repository, _ = report_app
+def test_a_report_answers_with_the_structured_inventory(report_app):
+    """Verify that a report answers with the structured inventory."""
+    client, _, plan_repository = report_app
 
     response = request_report(client)
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["id_external_inventory"] == ID_INVENTORY
-    assert body["id_external_unit"] == ID_UNIT
-    assert body["defined_problem"] and body["method"] and body["reasoning"]
-    assert [plan.id for plan in plan_repository.plans] == [body["id"]]
+    assert response.json() == EXTRACTED_INVENTORY_JSON
+    assert len(plan_repository.plans) == 1
+    assert plan_repository.plans[0].id_external_inventory == ID_INVENTORY
 
 
-def test_the_inventory_is_resolved_by_the_microservice(report_app):
-    """Verify that the inventory is resolved by the microservice."""
-    client, _, _, inventory_repository = report_app
-
-    request_report(client)
-
-    assert inventory_repository.resolved == [ID_INVENTORY]
-
-
-def test_the_analyzer_reads_the_markdown_the_microservice_returned(report_app, fake_sdk):
-    """Verify that the analyzer reads the markdown the microservice returned."""
+def test_the_analyzer_reads_the_markdown_from_the_request(report_app, fake_sdk):
+    """Verify that the analyzer reads the markdown from the request."""
     client, *_ = report_app
 
     request_report(client)
 
     analyzer = fake_sdk.AekoInventoryAnalyzer.instances[-1]
-    inventory, id_external_inventory, id_request = analyzer.analyzed[0]
+    inventory, id_external_inventory, id_request, gases, scopes, categories = analyzer.analyzed[0]
     assert inventory == INVENTORY_MARKDOWN
     assert id_external_inventory == ID_INVENTORY
     assert id_request
+    assert [(item.id, item.name) for item in gases] == [(1, "CO2")]
+    assert [(item.id, item.name) for item in scopes] == [(1, "Escopo 1")]
+    assert [(item.id, item.name, item.classification) for item in categories] == [
+        (1, "Combustão estacionária", None)
+    ]
 
 
-def test_the_last_two_plans_of_the_unit_become_the_analyzers_context(report_app, fake_sdk):
-    """Verify that the last two plans of the unit become the analyzers context."""
-    client, _, plan_repository, _ = report_app
-    plan_repository.plans.extend(
-        [
-            ImprovementPlan(id="p1", id_external_inventory=500, id_external_unit=ID_UNIT, defined_problem="oldest problem", method="oldest method", reasoning="oldest reasoning", updated_at=datetime(2026, 1, 1)),
-            ImprovementPlan(id="p2", id_external_inventory=501, id_external_unit=ID_UNIT, defined_problem="middle problem", method="middle method", reasoning="middle reasoning", updated_at=datetime(2026, 3, 1)),
-            ImprovementPlan(id="p3", id_external_inventory=499, id_external_unit=ID_UNIT + 1, defined_problem="another unit", method="another method", reasoning="another reasoning", updated_at=datetime(2026, 6, 1)),
-            ImprovementPlan(id="p4", id_external_inventory=498, id_external_unit=ID_UNIT, defined_problem="newest problem", method="newest method", reasoning="newest reasoning", updated_at=datetime(2026, 5, 1)),
-        ]
+def test_the_current_plan_of_the_inventory_becomes_the_analyzers_context(report_app, fake_sdk):
+    """Verify that the current plan of the inventory becomes the analyzers context."""
+    client, _, plan_repository = report_app
+    plan_repository.plans.append(
+        ImprovementPlan(
+            id="p1",
+            id_external_inventory=ID_INVENTORY,
+            defined_problem="boiler still burning",
+            method="swap for heat pumps",
+            reasoning="scope 1 dominates",
+            updated_at=datetime(2026, 5, 1),
+        )
     )
 
     request_report(client)
 
     context = fake_sdk.AekoInventoryAnalyzer.instances[-1].context
-    assert "newest problem" in context and "newest method" in context
-    assert "middle problem" in context and "middle reasoning" in context
-
-    assert "oldest problem" not in context
-    assert "another unit" not in context
+    assert "boiler still burning" in context
+    assert "swap for heat pumps" in context
+    assert "scope 1 dominates" in context
+    assert len(plan_repository.plans) == 1
+    assert plan_repository.plans[0].defined_problem == "high scope 1 emissions"
 
 
 def test_a_report_records_what_the_analysis_cost(report_app):
     """Verify that a report records what the analysis cost."""
-    client, api_main, _, _ = report_app
+    client, api_main, _ = report_app
 
     response = request_report(client)
 
@@ -692,7 +704,7 @@ def test_a_report_records_what_the_analysis_cost(report_app):
 
 def test_a_report_without_a_plan_answers_502_and_stores_nothing(report_app, fake_sdk):
     """Verify that a report without a plan answers 502 and stores nothing."""
-    client, api_main, plan_repository, _ = report_app
+    client, api_main, plan_repository = report_app
     fake_sdk.AekoInventoryAnalyzer.next_error = fake_sdk.MalformedAgentOutputError(
         "the coordinator never wrote the plan's three headings"
     )
@@ -706,6 +718,27 @@ def test_a_report_without_a_plan_answers_502_and_stores_nothing(report_app, fake
     assert document["flow"] == "analytical"
 
 
+def test_a_failed_reanalysis_keeps_the_current_plan(report_app, fake_sdk):
+    """Verify that a failed reanalysis keeps the current plan."""
+    client, _, plan_repository = report_app
+    existing = ImprovementPlan(
+        id="p1",
+        id_external_inventory=ID_INVENTORY,
+        defined_problem="old problem",
+        method="old method",
+        reasoning="old reasoning",
+        updated_at=datetime(2026, 5, 1),
+    )
+    plan_repository.plans.append(existing)
+    fake_sdk.AekoInventoryAnalyzer.next_error = fake_sdk.MalformedAgentOutputError("malformed")
+
+    response = request_report(client)
+
+    assert response.status_code == 502
+    assert plan_repository.plans == [existing]
+    assert get_report(client).json()["defined_problem"] == "old problem"
+
+
 def test_the_plan_is_remembered_for_the_user_who_asked(report_app, live_app):
     """Verify that the plan is remembered for the user who asked."""
     client, *_ = report_app
@@ -716,6 +749,78 @@ def test_the_plan_is_remembered_for_the_user_who_asked(report_app, live_app):
     memory = user_repository.memories[-1]
     assert memory.id_user == "u1"
     assert memory.field == "improvement_plan"
+
+
+def test_get_report_returns_the_textual_plan(report_app):
+    """Verify that get report returns the textual plan."""
+    client, *_ = report_app
+
+    request_report(client)
+    response = get_report(client)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "defined_problem": "high scope 1 emissions",
+        "solving_method": "replace the boiler fleet",
+        "reasoning": "direct combustion dominates the inventory",
+    }
+
+
+def test_get_report_is_404_when_no_plan_exists(report_app):
+    """Verify that get report is 404 when no plan exists."""
+    client, *_ = report_app
+
+    response = get_report(client)
+
+    assert response.status_code == 404
+
+
+def test_get_report_records_hub_metrics_and_no_aeko_metrics(report_app):
+    """Verify that get report records hub metrics and no aeko metrics."""
+    client, api_main, _ = report_app
+    request_report(client)
+    api_main.db["aeko_metrics"].documents.clear()
+    api_main.db["hub_metrics"].documents.clear()
+
+    response = get_report(client)
+
+    assert response.status_code == 200
+    assert stored_metrics(api_main) == []
+    (request_row,) = list(api_main.db["hub_metrics"].documents)
+    assert request_row["response_status"] == 200
+    assert request_row["endpoint"] == "/aether-api/v1/ai/report/{id_external_inventory}"
+
+
+def test_post_report_records_hub_metrics_for_the_post_template(report_app):
+    """Verify that post report records hub metrics for the post template."""
+    client, api_main, _ = report_app
+
+    response = request_report(client)
+
+    assert response.status_code == 200
+    (request_row,) = list(api_main.db["hub_metrics"].documents)
+    assert request_row["response_status"] == 200
+    assert request_row["endpoint"] == "/aether-api/v1/ai/report"
+
+
+def test_an_empty_inventory_is_400_and_does_not_call_aeko(report_app, fake_sdk):
+    """Verify that an empty inventory is 400 and does not call aeko."""
+    client, *_ = report_app
+
+    response = request_report(client, {**REPORT_BODY, "inventory": "   "})
+
+    assert response.status_code == 400
+    assert fake_sdk.AekoInventoryAnalyzer.instances == []
+
+
+def test_an_unknown_user_is_404_and_stores_nothing(report_app):
+    """Verify that an unknown user is 404 and stores nothing."""
+    client, _, plan_repository = report_app
+
+    response = request_report(client, {**REPORT_BODY, "id_external_user": 99999})
+
+    assert response.status_code == 404
+    assert plan_repository.plans == []
 
 
 def stored_metrics(api_main):

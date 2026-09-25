@@ -24,16 +24,6 @@ class Repository(IRepository):
         except Exception as e:
             raise RuntimeError(f"Error fetching improvement plan from database: {e}")
 
-    @logged(Module.DATABASE, "improvement_plan.get_last_by_id_external_unit")
-    def get_last_by_id_external_unit(self, id_external_unit, limit) -> list[ImprovementPlan]:
-        """Retrieve the latest plans for an external unit, up to the requested limit."""
-        try:
-            query, projection, sort, limit = q.get_last_by_id_external_unit_query(id_external_unit, limit)
-            improvement_plans_data = self.db["improvement_plan"].find(query, projection, sort=sort, limit=limit)
-            return [improvement_plan_from_data(data) for data in improvement_plans_data]
-        except Exception as e:
-            raise RuntimeError(f"Error fetching improvement plans from database: {e}")
-
     @logged(Module.DATABASE, "improvement_plan.create")
     def create(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
         """Persist an improvement plan and return the stored entity."""
@@ -44,6 +34,16 @@ class Repository(IRepository):
             return improvement_plan
         except Exception as e:
             raise RuntimeError(f"Error creating improvement plan in database: {e}")
+
+    @logged(Module.DATABASE, "improvement_plan.replace")
+    def replace(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
+        """Replace the plan stored for the same external inventory identifier."""
+        try:
+            query, document = q.replace_improvement_plan_query(improvement_plan)
+            self.db["improvement_plan"].replace_one(query, document)
+            return improvement_plan
+        except Exception as e:
+            raise RuntimeError(f"Error replacing improvement plan in database: {e}")
 
 
 def improvement_plan_from_data(data: dict) -> ImprovementPlan:

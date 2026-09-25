@@ -1,22 +1,17 @@
 """Define improvement-plan service and repository contracts.
 
-Plans are stored in MongoDB; inventory content is retrieved through a separate
-HTTP repository as Markdown for analysis.
+Plans are stored in MongoDB. Inventory Markdown arrives on the report request
+and is not resolved through another service.
 """
 
 from abc import ABC, abstractmethod
 
-from improvement_plan.entity import ImprovementPlan
+from improvement_plan.entity import ExtractedInventory, ImprovementPlan
 from user.user import IService as IUserService
 
 
-from improvement_plan.constants import (
-    PREVIOUS_PLANS_FOR_CONTEXT,
-)
-
-
 class MalformedPlanError(Exception):
-    """Raised when analysis produces no persistable improvement plan."""
+    """Raised when analysis produces no persistable plan or structured inventory."""
 
 class IRepository(ABC):
     @abstractmethod
@@ -25,21 +20,13 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
-    def get_last_by_id_external_unit(self, id_external_unit, limit) -> list[ImprovementPlan]:
-        """Retrieve the latest plans for an external unit, up to the requested limit."""
-        pass
-
-    @abstractmethod
     def create(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
         """Persist an improvement plan and return the stored entity."""
         pass
 
-class IInventoryRepository(ABC):
-    """Contract for retrieving inventory content as Markdown."""
-
     @abstractmethod
-    def get_inventory_markdown(self, id_external_inventory: int) -> str:
-        """Retrieve the inventory content as Markdown from the inventory service."""
+    def replace(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
+        """Replace the plan stored for the same external inventory identifier."""
         pass
 
 class IService(ABC):
@@ -49,23 +36,26 @@ class IService(ABC):
         pass
 
     @abstractmethod
-    def get_last_by_id_external_unit(self, id_external_unit, limit) -> list[ImprovementPlan]:
-        """Retrieve the latest plans for an external unit, up to the requested limit."""
+    def create(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
+        """Persist an improvement plan and return the stored entity."""
         pass
 
     @abstractmethod
-    def create(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
-        """Persist an improvement plan and return the stored entity."""
+    def replace(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
+        """Replace the plan stored for the same external inventory identifier."""
         pass
 
     @abstractmethod
     def input_inventory(
         self,
         id_external_inventory: int | None,
-        id_external_unit: int | None,
-        id_user: str,
+        inventory: str,
+        id_external_user: int,
+        gases,
+        scopes,
+        categories,
         user_service: IUserService,
         aeko_inventory_analyzer_factory,
-    ) -> ImprovementPlan:
-        """Analyze an inventory with previous plans as context, then store its plan and user memory."""
+    ) -> ExtractedInventory:
+        """Analyze inventory Markdown with the current plan as context, then store the new plan."""
         pass

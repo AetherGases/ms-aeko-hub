@@ -39,6 +39,11 @@ class StubCollection:
         self._record("update_one", query, update)
         return type("UpdateResult", (), {"modified_count": 1})()
 
+    def replace_one(self, query, replacement, upsert=False):
+        """Record a document replacement and return a simulated replace result."""
+        self._record("replace_one", query, replacement, upsert)
+        return type("UpdateResult", (), {"matched_count": 1, "upserted_id": None})()
+
     def call_args(self, name):
         """Return the recorded positional arguments for the named operation."""
         return [call[1:] for call in self.calls if call[0] == name]

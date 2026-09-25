@@ -46,7 +46,6 @@ def test_package_constants_have_one_definition_module(package):
         ("internal/shared", "FAILING_STATUS", "499", 499),
         ("cmd/api/tools", "CALCULATOR_MAX_EXPRESSION_LENGTH", "200", 200),
         ("cmd/api/integrations/mcp", "DEFAULT_CALL_TIMEOUT", "17.5", 17.5),
-        ("improvement_plan", "PREVIOUS_PLANS_FOR_CONTEXT", "4", 4),
         ("cmd/memory_generator_worker", "SESSION_INACTIVITY_MINUTES", "30", 30),
     ],
 )
@@ -85,27 +84,27 @@ def test_constants_decode_structured_configuration(monkeypatch, package, key, va
 
 def test_missing_configuration_has_no_hardcoded_fallback(monkeypatch):
     """Report a missing configuration key when neither the environment nor a file supplies it."""
-    monkeypatch.delenv("PREVIOUS_PLANS_FOR_CONTEXT", raising=False)
+    monkeypatch.delenv("SESSION_INACTIVITY_MINUTES", raising=False)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
-    path = Path(__file__).resolve().parents[1] / "improvement_plan/constants.py"
-    with pytest.raises(KeyError, match="PREVIOUS_PLANS_FOR_CONTEXT"):
+    path = Path(__file__).resolve().parents[1] / "cmd/memory_generator_worker/constants.py"
+    with pytest.raises(KeyError, match="SESSION_INACTIVITY_MINUTES"):
         runpy.run_path(str(path))
 
 
 def test_configuration_loads_from_env_file_outside_working_directory(monkeypatch, tmp_path):
     """Find the repository configuration independently of the launch directory."""
     root = Path(__file__).resolve().parents[1]
-    package = tmp_path / "improvement_plan"
-    package.mkdir()
+    package = tmp_path / "cmd" / "memory_generator_worker"
+    package.mkdir(parents=True)
     script = package / "constants.py"
     script.write_text(
-        (root / "improvement_plan/constants.py").read_text(encoding="utf-8"),
+        (root / "cmd/memory_generator_worker/constants.py").read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    (tmp_path / ".env").write_text("PREVIOUS_PLANS_FOR_CONTEXT=7\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("SESSION_INACTIVITY_MINUTES=7\n", encoding="utf-8")
     launch = tmp_path / "launch"
     launch.mkdir()
-    monkeypatch.delenv("PREVIOUS_PLANS_FOR_CONTEXT", raising=False)
+    monkeypatch.delenv("SESSION_INACTIVITY_MINUTES", raising=False)
     monkeypatch.chdir(launch)
     values = runpy.run_path(str(script))
-    assert values["PREVIOUS_PLANS_FOR_CONTEXT"] == 7
+    assert values["SESSION_INACTIVITY_MINUTES"] == 7

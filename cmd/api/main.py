@@ -194,13 +194,16 @@ class _Messenger(AekoMessenger):
 class _InventoryAnalyzer(AekoInventoryAnalyzer):
     """Adapt SDK analysis errors to domain errors while retaining run metrics."""
 
-    def analyze(self, inventory, *, id_external_inventory, id_request):
+    def analyze(self, inventory, *, id_external_inventory, id_request, gases, scopes, categories):
         """Analyze an inventory and translate malformed SDK output to a domain error."""
         try:
             return super().analyze(
                 inventory,
                 id_external_inventory=id_external_inventory,
                 id_request=id_request,
+                gases=gases,
+                scopes=scopes,
+                categories=categories,
             )
         except MalformedAgentOutputError as exc:
             raise _carrying_tracking(
@@ -380,7 +383,7 @@ OPENAPI_TAGS = [
     },
     {
         "name": "Reports",
-        "description": "Endpoints for generating AI-assisted reports and improvement plans.",
+        "description": "Endpoints for analyzing inventories and reading the stored textual improvement plan.",
     },
     {
         "name": "Metrics",

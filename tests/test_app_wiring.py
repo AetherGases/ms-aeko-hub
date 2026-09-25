@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from improvement_plan.database.repository import Repository as ImprovementPlanRepository
-from improvement_plan.integration.ms_inventory import Repository as InventoryRepository
 from improvement_plan.service import Service as ImprovementPlanService
 from internal.http import improvement_plan_handlers, session_handlers, user_handlers
 from session.cache.repository import Repository as CacheRepository
@@ -47,6 +46,7 @@ def test_report_route_is_registered_on_the_application(api_main):
     paths = api_main.app.openapi()["paths"]
 
     assert "post" in paths.get(REPORT_ROUTE, {})
+    assert "get" in paths.get("/aether-api/v1/ai/report/{id_external_inventory}", {})
 
 
 @pytest.mark.parametrize(
@@ -57,6 +57,7 @@ def test_report_route_is_registered_on_the_application(api_main):
         "/aether-api/v1/ai/session/{id_session}/messages",
         SEND_MESSAGE_ROUTE,
         REPORT_ROUTE,
+        "/aether-api/v1/ai/report/{id_external_inventory}",
     ],
 )
 def test_every_documented_route_is_registered(api_main, path):
@@ -67,18 +68,15 @@ def test_every_documented_route_is_registered(api_main, path):
 def test_report_route_is_reachable(api_main):
     """Verify that report route is reachable."""
     with TestClient(api_main.app) as client:
-        response = client.post(
-            REPORT_ROUTE,
-            params={"id_external_inventory": 502, "id_external_unit": 77, "id_user": "u1"},
-        )
+        response = client.post(REPORT_ROUTE, json={})
 
     assert response.status_code != 404
 
 
-def test_report_route_still_validates_its_query_parameters(api_main):
-    """Verify that report route still validates its query parameters."""
+def test_report_route_still_validates_its_body(api_main):
+    """Verify that report route still validates its body."""
     with TestClient(api_main.app) as client:
-        response = client.post(REPORT_ROUTE, params={"id_user": "u1"})
+        response = client.post(REPORT_ROUTE, json={"id_external_user": 12345})
 
     assert response.status_code == 422
 
@@ -135,13 +133,12 @@ def test_session_dependency_injects_the_cache_when_redis_is_configured():
     assert isinstance(service.cache_repository, CacheRepository)
 
 
-def test_report_dependency_builds_a_service_backed_by_the_concrete_repositories():
-    """Verify that report dependency builds a service backed by the concrete repositories."""
+def test_report_dependency_builds_a_service_backed_by_the_concrete_repository():
+    """Verify that report dependency builds a service backed by the concrete repository."""
     service = improvement_plan_handlers.get_improvement_plan_service(request_with(StubDatabase()))
 
     assert isinstance(service, ImprovementPlanService)
     assert isinstance(service.repository, ImprovementPlanRepository)
-    assert isinstance(service.inventory_repository, InventoryRepository)
 
 
 @pytest.mark.parametrize(

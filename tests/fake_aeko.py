@@ -6,11 +6,11 @@ raise with metrics attached and do not append a conversation message.
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-__version__ = "3.4.0"
+__version__ = "3.5.0"
 
 
 AGENT_NAMES: tuple[str, ...] = (
@@ -183,10 +183,40 @@ class AekoImprovementPlan(BaseModel):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class AekoCatalogItem(BaseModel):
+    id: int
+    name: str
+
+
+class AekoCategoryCatalogItem(BaseModel):
+    id: int
+    name: str
+    classification: Literal["UPSTREAM", "DOWNSTREAM"] | None = None
+
+
+class AekoInventoryEmission(BaseModel):
+    quantity_co2e: float
+    methodology_description: str | None = None
+    supplier_data_percentage: float | None = None
+    gas: int | None = None
+    scope: int | None = None
+    category: int | None = None
+    is_upstream: bool | None = None
+    is_reduction: bool
+
+
+class AekoExtractedInventory(BaseModel):
+    description: str | None = None
+    start_period: str | None = None
+    end_period: str | None = None
+    emissions: list[AekoInventoryEmission] = Field(default_factory=list)
+
+
 class AekoAnalysisResponse(BaseModel):
-    """What `analyze()` hands back: the document to write, and what it cost."""
+    """What `analyze()` hands back: the plan, the structured inventory, and what it cost."""
 
     plan: AekoImprovementPlan
+    inventory: AekoExtractedInventory
     aeko_metrics: AekoMetrics
 
 
@@ -467,12 +497,45 @@ class AekoMessenger:
         )
 
 
+DEFAULT_EXTRACTED_INVENTORY = {
+    "description": "Boiler-dominated inventory",
+    "start_period": "2025-01-01",
+    "end_period": "2025-12-31",
+    "emissions": [
+        {
+            "quantity_co2e": 12400.0,
+            "methodology_description": "stationary combustion",
+            "supplier_data_percentage": None,
+            "gas": 1,
+            "scope": 1,
+            "category": None,
+            "is_upstream": None,
+            "is_reduction": False,
+        }
+    ],
+}
+
+
+def _catalog_items(name: str, items, model):
+    """Validate a catalog list and reject duplicate identifiers before analysis."""
+    try:
+        parsed = [model.model_validate(item) for item in items]
+    except (ValidationError, TypeError, ValueError) as exc:
+        raise ValueError(f"{name} is not a valid Aeko catalog.") from exc
+
+    identifiers = [item.id for item in parsed]
+    if len(identifiers) != len(set(identifiers)):
+        raise ValueError(f"{name} contains duplicate ids.")
+    return parsed
+
+
 class AekoInventoryAnalyzer:
     """Report entry point, scripted instead of routed through Gemini."""
 
     instances: list["AekoInventoryAnalyzer"] = []
 
     next_plan_fields: dict[str, str] = {}
+    next_inventory_fields: dict[str, Any] = {}
     next_error: Exception | None = None
     next_agents: tuple[str, ...] = ("Análista de inventários",)
     next_latency: int | None = None
@@ -487,6 +550,7 @@ class AekoInventoryAnalyzer:
         """Clear scripted responses, errors, and recorded calls."""
         cls.instances = []
         cls.next_plan_fields = {}
+        cls.next_inventory_fields = {}
         cls.next_error = None
         cls.next_agents = ("Análista de inventários",)
         cls.next_latency = None
@@ -498,7 +562,7 @@ class AekoInventoryAnalyzer:
         self.context = context or ""
 
     def analyze(self, inventory: str, *, id_external_inventory: int,
-                id_request: str) -> AekoAnalysisResponse:
+                id_request: str, gases, scopes, categories) -> AekoAnalysisResponse:
         """Record the inventory analysis call and return or raise its scripted result."""
         RUNTIME.require_api_key()
 
@@ -516,7 +580,11 @@ class AekoInventoryAnalyzer:
                 f"analyze() takes id_request as a string, got {type(id_request).__name__}."
             )
 
-        self.analyzed.append((inventory, id_external_inventory, id_request))
+        gases = _catalog_items("gases", gases, AekoCatalogItem)
+        scopes = _catalog_items("scopes", scopes, AekoCatalogItem)
+        categories = _catalog_items("categories", categories, AekoCategoryCatalogItem)
+
+        self.analyzed.append((inventory, id_external_inventory, id_request, gases, scopes, categories))
 
         if type(self).next_error is not None:
             error = type(self).next_error
@@ -538,8 +606,14 @@ class AekoInventoryAnalyzer:
             **type(self).next_plan_fields,
         }
 
+        inventory_fields = {
+            **DEFAULT_EXTRACTED_INVENTORY,
+            **type(self).next_inventory_fields,
+        }
+
         return AekoAnalysisResponse(
             plan=AekoImprovementPlan(id_external_inventory=id_external_inventory, **fields),
+            inventory=AekoExtractedInventory.model_validate(inventory_fields),
             aeko_metrics=_tracking(
                 id_request,
                 ANALYTICAL_FLOW,
