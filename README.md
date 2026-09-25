@@ -10,8 +10,7 @@ the application and is the only module that imports the Aeko SDK.
 
 Configure the environment using `.env.example`. The application captures its
 database and SDK settings after loading the environment. Empty optional model
-and token settings use SDK defaults. `MS_INVENTORY_BASE_URL` is the inventory
-service origin; reports retrieve Markdown through its resolve endpoint.
+and token settings use SDK defaults.
 `AETHER_WEB_SITE_URL` selects the URL used by the Tavily site-map tool.
 
 Each `constants.py` loads `.env` from the repository root without overriding

@@ -1,4 +1,4 @@
-"""Define the domain entities for improvement plans."""
+"""Define the domain entities for improvement plans and extracted inventories."""
 
 from datetime import datetime
 
@@ -32,3 +32,53 @@ class ImprovementPlan:
             f"updated_at={self.updated_at!r}"
             ")"
         )
+
+
+class InventoryEmission:
+    quantity_co2e: float
+    methodology_description: str | None
+    supplier_data_percentage: float | None
+    gas: int | None
+    scope: int | None
+    category: int | None
+    is_upstream: bool | None
+    is_reduction: bool
+
+    def __init__(
+        self,
+        quantity_co2e: float,
+        methodology_description: str | None = None,
+        supplier_data_percentage: float | None = None,
+        gas: int | None = None,
+        scope: int | None = None,
+        category: int | None = None,
+        is_upstream: bool | None = None,
+        is_reduction: bool = False,
+    ):
+        self.quantity_co2e = quantity_co2e
+        self.methodology_description = methodology_description
+        self.supplier_data_percentage = supplier_data_percentage
+        self.gas = gas
+        self.scope = scope
+        self.category = category
+        self.is_upstream = is_upstream
+        self.is_reduction = is_reduction
+
+
+class ExtractedInventory:
+    description: str | None
+    start_period: str | None
+    end_period: str | None
+    emissions: list[InventoryEmission]
+
+    def __init__(
+        self,
+        description: str | None = None,
+        start_period: str | None = None,
+        end_period: str | None = None,
+        emissions: list[InventoryEmission] | None = None,
+    ):
+        self.description = description
+        self.start_period = start_period
+        self.end_period = end_period
+        self.emissions = list(emissions or [])

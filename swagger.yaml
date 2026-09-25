@@ -11,7 +11,7 @@ tags:
   - name: Sessions
     description: Endpoints for listing sessions, reading message history, and sending AI messages.
   - name: Reports
-    description: Endpoints for generating AI-assisted improvement plan reports and persisting output artifacts.
+    description: Endpoints for analyzing inventories and reading the stored textual improvement plan.
   - name: Metrics
     description: 'Endpoints for reading the event tracking bases behind the observability dashboard: what the gateway did with each request, and what the AI run inside it cost.'
 
@@ -225,55 +225,67 @@ paths:
     post:
       tags:
         - Reports
-      summary: Generate an improvement plan report
-      description: Resolves the inventory as Markdown through the ms-inventory microservice, runs it through the Aeko analyst flow with the unit's last two plans as context, and stores and returns the improvement plan that came out.
-      operationId: generateImprovementPlanReport
-      parameters:
-        - name: id_external_inventory
-          in: query
-          required: true
-          description: Inventory identifier in the Aether platform, resolved through ms-inventory and filed against the resulting plan.
-          schema:
-            type: integer
-          example: 502
-        - name: id_external_unit
-          in: query
-          required: true
-          description: Unit the inventory belongs to, which is what the previous plans are read by.
-          schema:
-            type: integer
-          example: 77
-        - name: id_user
-          in: query
-          required: true
-          description: Internal user identifier responsible for the report.
-          schema:
-            type: string
-          example: 65a8b3d6c0f8e1d7f4b2c010
+      summary: Analyze an inventory and return the structured extraction
+      description: Accepts inventory Markdown and the catalogs in force, runs them through the Aeko analyst flow with the current plan for that inventory as context, stores the new plan, and returns the structured inventory for Postgres persistence.
+      operationId: analyzeInventoryReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequestData'
+            example:
+              id_external_context_inventory: 502
+              inventory: '## Escopo 1'
+              id_external_user: 12345
+              gases:
+                - id: 1
+                  name: CO2
+              scopes:
+                - id: 1
+                  name: Escopo 1
+              categories:
+                - id: 1
+                  name: Combustão estacionária
+                  classification: null
       responses:
         '200':
-          description: Improvement plan generated and stored.
+          description: Structured inventory extracted from the analysis.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ImprovementPlanResponseData'
+                $ref: '#/components/schemas/ExtractedInventoryData'
               example:
-                id: 65a8b3d6c0f8e1d7f4b2c020
-                id_external_inventory: 502
-                id_external_unit: 77
-                defined_problem: high scope 1 emissions
-                method: replace the boiler fleet
-                reasoning: direct combustion dominates the inventory
+                description: Boiler-dominated inventory
+                start_period: '2025-01-01'
+                end_period: '2025-12-31'
+                emissions:
+                  - quantity_co2e: 12400.0
+                    methodology_description: stationary combustion
+                    supplier_data_percentage: null
+                    gas: 1
+                    scope: 1
+                    category: null
+                    is_upstream: null
+                    is_reduction: false
         '400':
-          description: One or more request parameters are invalid, or the inventory has no content.
+          description: The inventory Markdown is empty or a domain catalog rule was rejected.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                detail: ms-inventory answered inventory 502 without content.
+                detail: inventory is required to analyze an inventory.
+        '404':
+          description: No user exists for the supplied external identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: User with id_external_user 12345 not found.
         '502':
-          description: The analysis produced no plan under the three headings a report is stored in.
+          description: The analysis produced no plan or structured inventory in the expected shape.
           content:
             application/json:
               schema:
@@ -296,6 +308,56 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 detail: 'Error processing report: ...'
+  /aether-api/v1/ai/report/{id_external_inventory}:
+    get:
+      tags:
+        - Reports
+      summary: Get the textual improvement plan for an inventory
+      description: Returns the stored improvement plan for the external inventory identifier.
+      operationId: getInventoryImprovementPlan
+      parameters:
+        - name: id_external_inventory
+          in: path
+          required: true
+          description: External inventory identifier whose plan should be returned.
+          schema:
+            type: integer
+          example: 502
+      responses:
+        '200':
+          description: Textual improvement plan found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImprovementPlanReportData'
+              example:
+                defined_problem: high scope 1 emissions
+                solving_method: replace the boiler fleet
+                reasoning: direct combustion dominates the inventory
+        '404':
+          description: No improvement plan exists for the supplied inventory identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Improvement plan with id_external_inventory 502 not found.
+        '503':
+          description: Database connection is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Database is not initialized
+        '500':
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: 'Error retrieving report: ...'
   /aether-api/v1/ai/hub-metrics:
     get:
       tags:
@@ -460,29 +522,151 @@ components:
           type: string
           description: Internal user identifier.
           example: 65a8b3d6c0f8e1d7f4b2c010
-    ImprovementPlanResponseData:
+    ReportRequestData:
+      type: object
+      properties:
+        id_external_context_inventory:
+          type: integer
+          description: External inventory identifier analyzed and stored on the resulting plan.
+          example: 502
+        inventory:
+          type: string
+          description: Inventory content as Markdown.
+          example: '## Escopo 1'
+        id_external_user:
+          type: integer
+          description: External user identifier responsible for the report.
+          example: 12345
+        gases:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogItemData'
+        scopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogItemData'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryCatalogItemData'
+      required:
+        - id_external_context_inventory
+        - inventory
+        - id_external_user
+        - gases
+        - scopes
+        - categories
+    CatalogItemData:
       type: object
       properties:
         id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: CO2
+      required:
+        - id
+        - name
+    CategoryCatalogItemData:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Combustão estacionária
+        classification:
           type: string
           nullable: true
-          description: Identifier of the stored improvement plan.
-          example: 65a8b3d6c0f8e1d7f4b2c020
-        id_external_inventory:
+          enum:
+            - UPSTREAM
+            - DOWNSTREAM
+            - null
+          example: null
+      required:
+        - id
+        - name
+    ExtractedInventoryData:
+      type: object
+      properties:
+        description:
+          type: string
+          nullable: true
+          description: Short description of the analyzed inventory.
+          example: Boiler-dominated inventory
+        start_period:
+          type: string
+          nullable: true
+          description: Start of the inventory period.
+          example: '2025-01-01'
+        end_period:
+          type: string
+          nullable: true
+          description: End of the inventory period.
+          example: '2025-12-31'
+        emissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/InventoryEmissionData'
+      required:
+        - description
+        - start_period
+        - end_period
+        - emissions
+    InventoryEmissionData:
+      type: object
+      properties:
+        quantity_co2e:
+          type: number
+          format: float
+          example: 12400.0
+        methodology_description:
+          type: string
+          nullable: true
+          example: stationary combustion
+        supplier_data_percentage:
+          type: number
+          format: float
+          nullable: true
+          example: null
+        gas:
           type: integer
           nullable: true
-          description: Analyzed inventory identifier in the Aether platform.
-          example: 502
-        id_external_unit:
+          example: 1
+        scope:
           type: integer
           nullable: true
-          description: Unit the analyzed inventory belongs to.
-          example: 77
+          example: 1
+        category:
+          type: integer
+          nullable: true
+          example: null
+        is_upstream:
+          type: boolean
+          nullable: true
+          example: null
+        is_reduction:
+          type: boolean
+          example: false
+      required:
+        - quantity_co2e
+        - methodology_description
+        - supplier_data_percentage
+        - gas
+        - scope
+        - category
+        - is_upstream
+        - is_reduction
+    ImprovementPlanReportData:
+      type: object
+      properties:
         defined_problem:
           type: string
           description: Problem the analysis identified.
           example: high scope 1 emissions
-        method:
+        solving_method:
           type: string
           description: What the plan proposes doing about it.
           example: replace the boiler fleet
@@ -491,11 +675,8 @@ components:
           description: Why that method addresses that problem.
           example: direct combustion dominates the inventory
       required:
-        - id
-        - id_external_inventory
-        - id_external_unit
         - defined_problem
-        - method
+        - solving_method
         - reasoning
     MetricResponseData:
       type: object

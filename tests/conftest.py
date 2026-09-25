@@ -64,6 +64,11 @@ class FakeCollection:
         """Record a document update and return a simulated update result."""
         return None
 
+    def replace_one(self, query, replacement, upsert=False):
+        """Replace the first stored document and return a simulated replace result."""
+        self.documents = [replacement]
+        return type("UpdateResult", (), {"matched_count": 1, "upserted_id": None})()
+
 
 class FakeDatabase:
     def __init__(self):

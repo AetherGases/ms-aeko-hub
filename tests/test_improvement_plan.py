@@ -8,12 +8,10 @@ import pytest
 
 from improvement_plan.database import query as q
 from improvement_plan.database.repository import Repository, improvement_plan_from_data
-from improvement_plan.entity import ImprovementPlan
+from improvement_plan.entity import ExtractedInventory, ImprovementPlan, InventoryEmission
 from improvement_plan.improvement_plan import (
-    IInventoryRepository,
     IRepository,
     IService,
-    PREVIOUS_PLANS_FOR_CONTEXT,
 )
 from improvement_plan.service import Service
 from internal.shared.event_tracking import (
@@ -22,25 +20,31 @@ from internal.shared.event_tracking import (
     unbind_id_request,
 )
 from tests.mongo_doubles import StubCollection, StubDatabase
-from user.entity import UserMemory
+from user.entity import User, UserMemory
 
 UPDATED_AT = datetime(2026, 7, 26, 14, 30, 0)
 
 ID_USER = "u1"
+ID_EXTERNAL_USER = 12345
 ID_INVENTORY = 502
-ID_UNIT = 77
 
 INVENTORY_MARKDOWN = "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+
+GASES = [{"id": 1, "name": "CO2"}]
+SCOPES = [{"id": 1, "name": "Escopo 1"}]
+CATEGORIES = [{"id": 1, "name": "Combustão estacionária", "classification": None}]
 
 PLAN_DOCUMENT = {
     "_id": "65a8b3d6c0f8e1d7f4b2c020",
     "id_external_inventory": 1,
-    "id_external_unit": ID_UNIT,
+    "id_external_unit": 77,
     "defined_problem": "high scope 1 emissions",
     "method": "PDCA",
     "reasoning": "boiler replacement cuts direct emissions",
     "updated_at": UPDATED_AT,
 }
+
+USER = User(id=ID_USER, id_external_user=ID_EXTERNAL_USER, role="analyst", usecase="report_generation")
 
 
 def previous_plan(id_external_inventory, defined_problem, method, reasoning, updated_at=UPDATED_AT):
@@ -48,7 +52,6 @@ def previous_plan(id_external_inventory, defined_problem, method, reasoning, upd
     return ImprovementPlan(
         id=f"plan-{id_external_inventory}",
         id_external_inventory=id_external_inventory,
-        id_external_unit=ID_UNIT,
         defined_problem=defined_problem,
         method=method,
         reasoning=reasoning,
@@ -57,20 +60,19 @@ def previous_plan(id_external_inventory, defined_problem, method, reasoning, upd
 
 
 class StubPlanRepository:
-    def __init__(self, result=None, previous=None):
+    def __init__(self, result=None, existing=None):
         self.result = result
-        self.previous = list(previous or [])
+        self.existing = existing
         self.calls = []
 
     def get_by_id_external_inventory(self, id_external_inventory):
         """Retrieve the improvement plan associated with an external inventory identifier."""
         self.calls.append(("get", id_external_inventory))
-        return self.result
-
-    def get_last_by_id_external_unit(self, id_external_unit, limit):
-        """Retrieve the latest plans for an external unit, up to the requested limit."""
-        self.calls.append(("get_last", id_external_unit, limit))
-        return self.previous[:limit]
+        if self.existing is None:
+            raise ValueError(
+                f"Improvement plan with id_external_inventory {id_external_inventory} not found."
+            )
+        return self.existing
 
     def create(self, improvement_plan):
         """Persist an improvement plan and return the stored entity."""
@@ -78,21 +80,17 @@ class StubPlanRepository:
         if self.result is not None:
             return self.result
         improvement_plan.id = "created-plan"
+        self.existing = improvement_plan
         return improvement_plan
 
-
-class StubInventoryRepository:
-    def __init__(self, markdown=INVENTORY_MARKDOWN, error=None):
-        self.markdown = markdown
-        self.error = error
-        self.calls = []
-
-    def get_inventory_markdown(self, id_external_inventory):
-        """Retrieve the inventory content as Markdown from the inventory service."""
-        self.calls.append(id_external_inventory)
-        if self.error is not None:
-            raise self.error
-        return self.markdown
+    def replace(self, improvement_plan):
+        """Replace the plan stored for the same external inventory identifier."""
+        self.calls.append(("replace", improvement_plan))
+        if self.result is not None:
+            return self.result
+        improvement_plan.id = improvement_plan.id or "replaced-plan"
+        self.existing = improvement_plan
+        return improvement_plan
 
 
 class StubPlan:
@@ -104,6 +102,28 @@ class StubPlan:
         self.defined_problem = "high scope 1 emissions"
         self.method = "replace the boiler fleet"
         self.reasoning = "direct combustion dominates the inventory"
+
+
+class StubEmission:
+    def __init__(self):
+        self.quantity_co2e = 12400.0
+        self.methodology_description = "stationary combustion"
+        self.supplier_data_percentage = None
+        self.gas = 1
+        self.scope = 1
+        self.category = None
+        self.is_upstream = None
+        self.is_reduction = False
+
+
+class StubInventory:
+    """Stands in for the `AekoExtractedInventory` the SDK returns."""
+
+    def __init__(self):
+        self.description = "Boiler-dominated inventory"
+        self.start_period = "2025-01-01"
+        self.end_period = "2025-12-31"
+        self.emissions = [StubEmission()]
 
 
 class StubMetrics:
@@ -118,17 +138,19 @@ class StubMetrics:
 
 
 class StubAnalysis:
-    """Stands in for the `AekoAnalysisResponse` 3.x hands back."""
+    """Stands in for the `AekoAnalysisResponse` 3.5 hands back."""
 
-    def __init__(self, plan, aeko_metrics):
+    def __init__(self, plan, aeko_metrics, inventory=None):
         self.plan = plan
+        self.inventory = inventory or StubInventory()
         self.aeko_metrics = aeko_metrics
 
 
 class StubAnalyzer:
-    def __init__(self, plan=None, error=None):
+    def __init__(self, plan=None, error=None, inventory=None):
         self.plan = plan or StubPlan()
         self.error = error
+        self.inventory = inventory or StubInventory()
 
         self.context = None
         self.analyzed = []
@@ -137,22 +159,23 @@ class StubAnalyzer:
         """Record the analysis context supplied by the service."""
         self.context = context
 
-    def analyze(self, inventory, *, id_external_inventory, id_request):
+    def analyze(self, inventory, *, id_external_inventory, id_request, gases, scopes, categories):
         """Record the inventory analysis call and return or raise its scripted result."""
-        self.analyzed.append((inventory, id_external_inventory, id_request))
+        self.analyzed.append((inventory, id_external_inventory, id_request, gases, scopes, categories))
         if self.error is not None:
             raise self.error
-        return StubAnalysis(self.plan, StubMetrics(id_request=id_request))
+        return StubAnalysis(self.plan, StubMetrics(id_request=id_request), self.inventory)
 
 
 class StubAnalyzerFactory:
-    def __init__(self, plan=None, error=None):
+    def __init__(self, plan=None, error=None, inventory=None):
         self.plan = plan
         self.error = error
+        self.inventory = inventory
         self.built = []
 
     def __call__(self):
-        analyzer = StubAnalyzer(self.plan, self.error)
+        analyzer = StubAnalyzer(self.plan, self.error, self.inventory)
         self.built.append(analyzer)
         return analyzer
 
@@ -163,12 +186,15 @@ class StubAnalyzerFactory:
 
 
 class StubUserService:
-    def __init__(self):
+    def __init__(self, user=USER):
+        self.user = user
         self.memories = []
 
     def get_mongo_user(self, id_external_user):
         """Retrieve the stored user matching an external identifier."""
-        raise NotImplementedError
+        if self.user is None:
+            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+        return self.user
 
     def get_user_memories(self, id_user):
         """Retrieve the memories stored for a user."""
@@ -185,19 +211,22 @@ def build_repository(collection=None):
     return Repository(StubDatabase(improvement_plan=collection)), collection
 
 
-def build_service(repository=None, inventories=None):
-    """Build a domain service with configurable repository doubles."""
-    return Service(repository or StubPlanRepository(), inventories or StubInventoryRepository())
+def build_service(repository=None):
+    """Build a domain service with a configurable repository double."""
+    return Service(repository or StubPlanRepository())
 
 
-def run(repository=None, inventories=None, analyzers=None, users=None,
-        id_external_inventory=ID_INVENTORY, id_external_unit=ID_UNIT):
+def run(repository=None, analyzers=None, users=None, id_external_inventory=ID_INVENTORY,
+        inventory=INVENTORY_MARKDOWN, gases=None, scopes=None, categories=None):
     """Execute the scenario under test."""
-    service = build_service(repository, inventories)
+    service = build_service(repository)
     return service.input_inventory(
         id_external_inventory,
-        id_external_unit,
-        ID_USER,
+        inventory,
+        ID_EXTERNAL_USER,
+        gases if gases is not None else GASES,
+        scopes if scopes is not None else SCOPES,
+        categories if categories is not None else CATEGORIES,
         users or StubUserService(),
         analyzers or StubAnalyzerFactory(),
     )
@@ -217,7 +246,7 @@ def test_entity_renders_every_field_as_text():
     plan = ImprovementPlan(
         id="p1",
         id_external_inventory=1,
-        id_external_unit=ID_UNIT,
+        id_external_unit=77,
         defined_problem="problem",
         method="PDCA",
         reasoning="why",
@@ -227,8 +256,16 @@ def test_entity_renders_every_field_as_text():
 
     assert rendered.startswith("ImprovementPlan(")
     assert "id_external_inventory=1" in rendered
-    assert f"id_external_unit={ID_UNIT}" in rendered
+    assert "id_external_unit=77" in rendered
     assert "'problem'" in rendered
+
+
+def test_extracted_inventory_defaults_to_empty_emissions():
+    """Verify that extracted inventory defaults to empty emissions."""
+    inventory = ExtractedInventory()
+
+    assert (inventory.description, inventory.start_period, inventory.end_period) == (None, None, None)
+    assert inventory.emissions == []
 
 
 def test_repository_and_service_implement_their_interfaces():
@@ -246,10 +283,14 @@ def test_input_inventory_signature_matches_the_interface():
 
     assert list(interface) == list(implementation)
     assert "aeko_inventory_analyzer_factory" in interface
-
-    assert "s3" not in interface
     assert "id_external_inventory" in interface
-    assert "id_external_unit" in interface
+    assert "inventory" in interface
+    assert "id_external_user" in interface
+    assert "gases" in interface
+    assert "scopes" in interface
+    assert "categories" in interface
+    assert "id_external_unit" not in interface
+    assert "s3" not in interface
 
 
 def test_the_flow_no_longer_lives_in_its_own_package():
@@ -257,9 +298,11 @@ def test_the_flow_no_longer_lives_in_its_own_package():
     assert importlib.util.find_spec("inventory_analysis") is None
 
 
-def test_the_inventory_repository_is_an_interface_of_its_own():
-    """Verify that the inventory repository is an interface of its own."""
-    assert "get_inventory_markdown" in IInventoryRepository.__abstractmethods__
+def test_the_inventory_is_not_resolved_through_another_service():
+    """Verify that the inventory is not resolved through another service."""
+    from pathlib import Path
+
+    assert not (Path(__file__).resolve().parents[1] / "improvement_plan" / "integration").exists()
 
 
 def test_get_by_id_external_inventory_returns_the_plan():
@@ -271,7 +314,7 @@ def test_get_by_id_external_inventory_returns_the_plan():
     assert isinstance(plan, ImprovementPlan)
     assert plan.id == "65a8b3d6c0f8e1d7f4b2c020"
     assert plan.method == "PDCA"
-    assert plan.id_external_unit == ID_UNIT
+    assert plan.id_external_unit == 77
     assert plan.updated_at == UPDATED_AT
 
 
@@ -300,47 +343,11 @@ def test_get_by_id_external_inventory_wraps_database_failures():
         repository.get_by_id_external_inventory(1)
 
 
-def test_get_last_by_id_external_unit_returns_the_plans_the_database_answered():
-    """Verify that get last by id external unit returns the plans the database answered."""
-    repository, _ = build_repository(StubCollection(find_result=[PLAN_DOCUMENT, PLAN_DOCUMENT]))
-
-    plans = repository.get_last_by_id_external_unit(ID_UNIT, 2)
-
-    assert [type(plan) for plan in plans] == [ImprovementPlan, ImprovementPlan]
-    assert plans[0].id_external_unit == ID_UNIT
-
-
-def test_get_last_by_id_external_unit_asks_for_the_newest_plans_of_that_unit():
-    """Verify that get last by id external unit asks for the newest plans of that unit."""
-    repository, collection = build_repository(StubCollection(find_result=[PLAN_DOCUMENT]))
-
-    repository.get_last_by_id_external_unit(ID_UNIT, 2)
-
-    assert collection.call_args("find")[0][0] == {"id_external_unit": ID_UNIT}
-    assert collection.find_options[0] == {"sort": [("updated_at", -1)], "limit": 2}
-
-
-def test_get_last_by_id_external_unit_returns_nothing_for_a_units_first_report():
-    """Verify that get last by id external unit returns nothing for a units first report."""
-    repository, _ = build_repository(StubCollection(find_result=[]))
-
-    assert repository.get_last_by_id_external_unit(ID_UNIT, 2) == []
-
-
-def test_get_last_by_id_external_unit_wraps_database_failures():
-    """Verify that get last by id external unit wraps database failures."""
-    repository, _ = build_repository(StubCollection(error=OSError("boom")))
-
-    with pytest.raises(RuntimeError, match="boom"):
-        repository.get_last_by_id_external_unit(ID_UNIT, 2)
-
-
 def test_create_stores_the_plan_and_returns_it_with_an_identifier():
     """Verify that create stores the plan and returns it with an identifier."""
     repository, collection = build_repository(StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c020"))
     plan = ImprovementPlan(
         id_external_inventory=1,
-        id_external_unit=ID_UNIT,
         defined_problem="problem",
         method="PDCA",
         reasoning="why",
@@ -361,6 +368,32 @@ def test_create_wraps_database_failures():
         repository.create(ImprovementPlan())
 
 
+def test_replace_overwrites_the_plan_for_that_inventory():
+    """Verify that replace overwrites the plan for that inventory."""
+    repository, collection = build_repository()
+    plan = ImprovementPlan(
+        id="65a8b3d6c0f8e1d7f4b2c020",
+        id_external_inventory=1,
+        defined_problem="new problem",
+        method="new method",
+        reasoning="new reasoning",
+    )
+
+    replaced = repository.replace(plan)
+
+    assert replaced is plan
+    assert collection.call_args("replace_one")[0][0] == {"id_external_inventory": 1}
+    assert collection.call_args("replace_one")[0][1]["defined_problem"] == "new problem"
+
+
+def test_replace_wraps_database_failures():
+    """Verify that replace wraps database failures."""
+    repository, _ = build_repository(StubCollection(error=OSError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        repository.replace(ImprovementPlan(id_external_inventory=1))
+
+
 def test_improvement_plan_from_data_handles_a_document_without_an_identifier():
     """Verify that improvement plan from data handles a document without an identifier."""
     plan = improvement_plan_from_data({"id_external_inventory": 2})
@@ -375,22 +408,12 @@ def test_get_by_id_external_inventory_query():
     assert q.get_by_id_external_inventory_query(7) == ({"id_external_inventory": 7}, {})
 
 
-def test_get_last_by_id_external_unit_query_reads_the_newest_plans_of_the_unit():
-    """Verify that get last by id external unit query reads the newest plans of the unit."""
-    query, projection, sort, limit = q.get_last_by_id_external_unit_query(ID_UNIT, 2)
-
-    assert query == {"id_external_unit": ID_UNIT}
-    assert projection == {}
-    assert sort == [("updated_at", -1)]
-    assert limit == 2
-
-
-def test_create_improvement_plan_query_maps_every_field():
-    """Verify that create improvement plan query maps every field."""
+def test_create_improvement_plan_query_maps_every_field_the_flow_persists():
+    """Verify that create improvement plan query maps every field the flow persists."""
     plan = ImprovementPlan(
         id="p1",
         id_external_inventory=1,
-        id_external_unit=ID_UNIT,
+        id_external_unit=77,
         defined_problem="problem",
         method="PDCA",
         reasoning="why",
@@ -401,12 +424,12 @@ def test_create_improvement_plan_query_maps_every_field():
 
     assert document == {
         "id_external_inventory": 1,
-        "id_external_unit": ID_UNIT,
         "defined_problem": "problem",
         "method": "PDCA",
         "reasoning": "why",
         "updated_at": UPDATED_AT,
     }
+    assert "id_external_unit" not in document
 
 
 def test_create_improvement_plan_query_stamps_a_missing_update_timestamp():
@@ -420,36 +443,23 @@ def test_create_improvement_plan_query_leaves_out_what_the_plan_does_not_carry()
     """Verify that create improvement plan query leaves out what the plan does not carry."""
     document = q.create_improvement_plan_query(ImprovementPlan(id_external_inventory=1))
 
-    assert "id_external_unit" not in document
     assert None not in document.values()
 
 
-def test_create_improvement_plan_query_keeps_the_external_identifiers_numbers():
-    """Verify that create improvement plan query keeps the external identifiers numbers."""
-    document = q.create_improvement_plan_query(
-        ImprovementPlan(id_external_inventory=7, id_external_unit=ID_UNIT)
-    )
+def test_create_improvement_plan_query_keeps_the_external_identifier_a_number():
+    """Verify that create improvement plan query keeps the external identifier a number."""
+    document = q.create_improvement_plan_query(ImprovementPlan(id_external_inventory=7))
 
     assert isinstance(document["id_external_inventory"], int)
-    assert isinstance(document["id_external_unit"], int)
 
 
 def test_service_get_delegates_to_the_repository():
     """Verify that service get delegates to the repository."""
     plan = ImprovementPlan(id="p1")
-    repository = StubPlanRepository(result=plan)
+    repository = StubPlanRepository(existing=plan)
 
     assert build_service(repository).get_by_id_external_inventory(1) is plan
     assert repository.calls == [("get", 1)]
-
-
-def test_service_get_last_by_id_external_unit_delegates_to_the_repository():
-    """Verify that service get last by id external unit delegates to the repository."""
-    plans = [previous_plan(1, "problem", "PDCA", "why")]
-    repository = StubPlanRepository(previous=plans)
-
-    assert build_service(repository).get_last_by_id_external_unit(ID_UNIT, 2) == plans
-    assert repository.calls == [("get_last", ID_UNIT, 2)]
 
 
 def test_service_create_delegates_to_the_repository():
@@ -461,13 +471,13 @@ def test_service_create_delegates_to_the_repository():
     assert repository.calls == [("create", plan)]
 
 
-def test_the_inventory_is_read_from_the_microservice_by_its_external_id():
-    """Verify that the inventory is read from the microservice by its external id."""
-    inventories = StubInventoryRepository()
+def test_service_replace_delegates_to_the_repository():
+    """Verify that service replace delegates to the repository."""
+    plan = ImprovementPlan(id="p1")
+    repository = StubPlanRepository(result=plan)
 
-    run(inventories=inventories)
-
-    assert inventories.calls == [ID_INVENTORY]
+    assert build_service(repository).replace(plan) is plan
+    assert repository.calls == [("replace", plan)]
 
 
 def test_analyze_receives_the_inventory_as_markdown():
@@ -476,7 +486,7 @@ def test_analyze_receives_the_inventory_as_markdown():
 
     run(analyzers=analyzers)
 
-    inventory, _, _ = analyzers.last.analyzed[0]
+    inventory, _, _, _, _, _ = analyzers.last.analyzed[0]
     assert inventory == INVENTORY_MARKDOWN
 
 
@@ -486,8 +496,20 @@ def test_analyze_receives_the_inventory_identifier():
 
     run(analyzers=analyzers)
 
-    _, id_external_inventory, _ = analyzers.last.analyzed[0]
+    _, id_external_inventory, _, _, _, _ = analyzers.last.analyzed[0]
     assert id_external_inventory == ID_INVENTORY
+
+
+def test_analyze_receives_the_catalogs_from_the_request():
+    """Verify that analyze receives the catalogs from the request."""
+    analyzers = StubAnalyzerFactory()
+
+    run(analyzers=analyzers)
+
+    _, _, _, gases, scopes, categories = analyzers.last.analyzed[0]
+    assert gases == GASES
+    assert scopes == SCOPES
+    assert categories == CATEGORIES
 
 
 def test_every_report_gets_a_fresh_analyzer():
@@ -500,48 +522,27 @@ def test_every_report_gets_a_fresh_analyzer():
     assert len(analyzers.built) == 2
 
 
-def test_the_units_previous_plans_are_asked_for_two_at_a_time():
-    """Verify that the units previous plans are asked for two at a time."""
-    repository = StubPlanRepository()
-
-    run(repository=repository)
-
-    assert ("get_last", ID_UNIT, PREVIOUS_PLANS_FOR_CONTEXT) in repository.calls
-    assert PREVIOUS_PLANS_FOR_CONTEXT == 2
-
-
-def test_the_context_carries_the_content_of_the_last_two_plans():
-    """Verify that the context carries the content of the last two plans."""
+def test_the_current_plan_of_the_inventory_becomes_context():
+    """Verify that the current plan of the inventory becomes context."""
     analyzers = StubAnalyzerFactory()
     repository = StubPlanRepository(
-        previous=[
-            previous_plan(9, "boiler still burning", "swap for heat pumps", "scope 1 dominates"),
-            previous_plan(8, "diesel fleet", "electrify the fleet", "scope 1 second largest"),
-        ]
+        existing=previous_plan(ID_INVENTORY, "boiler still burning", "swap for heat pumps", "scope 1 dominates")
     )
 
     run(repository=repository, analyzers=analyzers)
 
     context = analyzers.last.context
-    assert isinstance(context, str)
-    for text in (
-        "boiler still burning",
-        "swap for heat pumps",
-        "scope 1 dominates",
-        "diesel fleet",
-        "electrify the fleet",
-        "scope 1 second largest",
-    ):
-        assert text in context
-
-    assert context.index("boiler still burning") < context.index("diesel fleet")
+    assert "boiler still burning" in context
+    assert "swap for heat pumps" in context
+    assert "scope 1 dominates" in context
+    assert all(call[0] != "get_last" for call in repository.calls)
 
 
-def test_the_context_is_set_even_when_the_unit_has_no_previous_plan():
-    """Verify that the context is set even when the unit has no previous plan."""
+def test_the_context_is_empty_when_the_inventory_has_no_plan():
+    """Verify that the context is empty when the inventory has no plan."""
     analyzers = StubAnalyzerFactory()
 
-    run(repository=StubPlanRepository(previous=[]), analyzers=analyzers)
+    run(repository=StubPlanRepository(), analyzers=analyzers)
 
     assert analyzers.last.context == ""
 
@@ -552,10 +553,24 @@ def test_an_inventory_without_an_identifier_is_rejected():
         run(id_external_inventory=None)
 
 
-def test_a_report_without_a_unit_is_rejected():
-    """Verify that a report without a unit is rejected."""
-    with pytest.raises(ValueError, match="id_external_unit"):
-        run(id_external_unit=None)
+def test_an_empty_inventory_is_rejected_before_the_analyzer():
+    """Verify that an empty inventory is rejected before the analyzer."""
+    analyzers = StubAnalyzerFactory()
+
+    with pytest.raises(ValueError, match="inventory"):
+        run(inventory="  ", analyzers=analyzers)
+
+    assert analyzers.built == []
+
+
+def test_a_missing_user_is_rejected_before_the_analyzer():
+    """Verify that a missing user is rejected before the analyzer."""
+    analyzers = StubAnalyzerFactory()
+
+    with pytest.raises(ValueError, match="not found"):
+        run(users=StubUserService(user=None), analyzers=analyzers)
+
+    assert analyzers.built == []
 
 
 def test_the_plan_is_persisted_field_by_field():
@@ -567,10 +582,38 @@ def test_the_plan_is_persisted_field_by_field():
     (plan,) = [call[1] for call in repository.calls if call[0] == "create"]
     assert isinstance(plan, ImprovementPlan)
     assert plan.id_external_inventory == ID_INVENTORY
-    assert plan.id_external_unit == ID_UNIT
+    assert plan.id_external_unit is None
     assert plan.defined_problem == "high scope 1 emissions"
     assert plan.method == "replace the boiler fleet"
     assert plan.reasoning == "direct combustion dominates the inventory"
+
+
+def test_a_successful_reanalysis_replaces_the_plan():
+    """Verify that a successful reanalysis replaces the plan."""
+    existing = previous_plan(ID_INVENTORY, "old problem", "old method", "old reasoning")
+    repository = StubPlanRepository(existing=existing)
+
+    run(repository=repository)
+
+    assert [call[0] for call in repository.calls if call[0] in {"create", "replace"}] == ["replace"]
+    (plan,) = [call[1] for call in repository.calls if call[0] == "replace"]
+    assert plan.defined_problem == "high scope 1 emissions"
+    assert plan.id == existing.id
+
+
+def test_a_failing_analysis_does_not_replace_the_plan():
+    """Verify that a failing analysis does not replace the plan."""
+    existing = previous_plan(ID_INVENTORY, "old problem", "old method", "old reasoning")
+    repository = StubPlanRepository(existing=existing)
+
+    with pytest.raises(RuntimeError, match="coordinator never produced the plan"):
+        run(
+            repository=repository,
+            analyzers=StubAnalyzerFactory(error=RuntimeError("coordinator never produced the plan")),
+        )
+
+    assert [call[0] for call in repository.calls if call[0] in {"create", "replace"}] == []
+    assert repository.existing is existing
 
 
 def test_the_plan_is_remembered_for_the_user():
@@ -586,21 +629,17 @@ def test_the_plan_is_remembered_for_the_user():
     assert "high scope 1 emissions" in memory.description
 
 
-def test_the_created_plan_is_returned():
-    """Verify that the created plan is returned."""
-    plan = run()
+def test_the_structured_inventory_is_returned():
+    """Verify that the structured inventory is returned."""
+    inventory = run()
 
-    assert isinstance(plan, ImprovementPlan)
-    assert plan.id == "created-plan"
-    assert plan.defined_problem == "high scope 1 emissions"
-
-
-def test_an_inventory_the_microservice_cannot_deliver_is_surfaced():
-    """Verify that an inventory the microservice cannot deliver is surfaced."""
-    inventories = StubInventoryRepository(error=RuntimeError("ms-inventory answered 503"))
-
-    with pytest.raises(RuntimeError, match="ms-inventory answered 503"):
-        run(inventories=inventories)
+    assert isinstance(inventory, ExtractedInventory)
+    assert inventory.description == "Boiler-dominated inventory"
+    assert inventory.start_period == "2025-01-01"
+    assert inventory.end_period == "2025-12-31"
+    assert isinstance(inventory.emissions[0], InventoryEmission)
+    assert inventory.emissions[0].quantity_co2e == 12400.0
+    assert inventory.emissions[0].is_reduction is False
 
 
 def test_a_failing_analyzer_is_surfaced():
@@ -674,6 +713,6 @@ def test_a_recording_that_fails_never_takes_the_analysis_down():
     set_aeko_metrics_sink(explode)
 
     try:
-        assert run().defined_problem == "high scope 1 emissions"
+        assert run().description == "Boiler-dominated inventory"
     finally:
         set_aeko_metrics_sink(None)
