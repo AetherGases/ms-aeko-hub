@@ -55,8 +55,12 @@ from cmd.memory_generator_worker.constants import REDIS_SCAN_COUNT, SESSION_INAC
 from improvement_plan.database.repository import Repository as ImprovementPlanRepository
 from improvement_plan.improvement_plan import MalformedPlanError
 from improvement_plan.service import Service as ImprovementPlanService
-from internal.http.aeko_metrics_handlers import router as aeko_metrics_router
-from internal.http.hub_metrics_handlers import router as hub_metrics_router
+from internal.observability.telemetry import (
+    configure as configure_opentelemetry,
+    record_aeko_run,
+    record_hub_metric,
+    shutdown as shutdown_opentelemetry,
+)
 from internal.http.improvement_plan_handlers import router as improvement_plan_router
 from internal.http.oauth_handlers import router as oauth_router
 from internal.http.session_handlers import router as session_router
@@ -307,7 +311,7 @@ def build_metric_sink(database):
 
     def sink(event: Event) -> None:
         """Persist the supplied tracking data through the configured metric service."""
-        service.add_metric(
+        stored = service.add_metric(
             Metric(
                 id=event.id_request,
                 latency=event.latency,
@@ -316,6 +320,7 @@ def build_metric_sink(database):
                 origin=event.origin,
             )
         )
+        record_hub_metric(stored)
 
     return sink
 
@@ -338,7 +343,7 @@ def build_aeko_metrics_sink(database):
             )
             for agent in metrics.used_agents
         ]
-        service.add_metric(
+        stored = service.add_metric(
             AekoMetric(
                 id_request=metrics.id_request,
                 latency=metrics.latency,
@@ -350,6 +355,7 @@ def build_aeko_metrics_sink(database):
                 id_external_company=current_metric_id_external_company(),
             )
         )
+        record_aeko_run(stored)
 
     return sink
 
@@ -365,6 +371,7 @@ async def lifespan(app: FastAPI):
     global mongo_client, redis_client, db
 
     silence_uvicorn_access_log()
+    configure_opentelemetry()
 
     mongo_client = MongoClient(MONGO_URI)
     db = mongo_client[DB_NAME]
@@ -448,6 +455,7 @@ async def lifespan(app: FastAPI):
     configure_ask_aeko()
     set_event_sink(None)
     set_aeko_metrics_sink(None)
+    shutdown_opentelemetry()
 
     for session in MCP_SESSIONS:
         session.close()
@@ -467,10 +475,6 @@ OPENAPI_TAGS = [
     {
         "name": "Reports",
         "description": "Endpoints for analyzing inventories and reading the stored textual improvement plan.",
-    },
-    {
-        "name": "Metrics",
-        "description": "Endpoints for reading the event tracking bases behind the observability dashboard: what the gateway did with each request, and what the AI run inside it cost.",
     },
 ]
 
@@ -493,8 +497,6 @@ app.include_router(user_router)
 app.include_router(session_router)
 app.include_router(upload_ticket_router)
 app.include_router(improvement_plan_router)
-app.include_router(hub_metrics_router)
-app.include_router(aeko_metrics_router)
 app.include_router(oauth_router)
 
 app.mount(CHATGPT_MCP_PREFIX, chatgpt_mcp_app)

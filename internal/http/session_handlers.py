@@ -7,7 +7,8 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from aeko_metrics.aeko_metrics import IService as IAekoMetricsService
-from internal.http.aeko_metrics_handlers import get_aeko_metrics_service
+from aeko_metrics.database.repository import Repository as AekoMetricsRepository
+from aeko_metrics.service import Service as AekoMetricsService
 from session.database.repository import Repository
 from session.cache.repository import Repository as CacheRepository
 from session.service import Service
@@ -60,6 +61,14 @@ def get_session_service(request: Request) -> IService:
         cache_repository,
         inactivity_minutes=SESSION_INACTIVITY_MINUTES,
     )
+
+
+def get_aeko_metrics_service(request: Request) -> IAekoMetricsService:
+    """Build the SDK metrics service from the application database, or raise HTTP 503."""
+    database = request.app.state.db
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database is not initialized")
+    return AekoMetricsService(AekoMetricsRepository(database))
 
 
 @router.get(

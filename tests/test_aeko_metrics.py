@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from aeko_metrics.aeko_metrics import IRepository, IService
@@ -15,7 +14,6 @@ from aeko_metrics.database import query as q
 from aeko_metrics.database.repository import Repository, metric_from_data
 from aeko_metrics.entity import AgentMetric, Metric
 from aeko_metrics.service import Service
-from internal.http import aeko_metrics_handlers
 from internal.shared import event_tracking
 from internal.shared.event_tracking import (
     REQUEST_ID_HEADER,
@@ -564,111 +562,11 @@ def test_the_identifier_does_not_outlive_the_request_that_had_it():
     assert current_id_request() == ""
 
 
-class StubMetricsService:
-    def __init__(self, metrics=None, error=None):
-        self.metrics = metrics or []
-        self.error = error
-        self.calls = []
-
-    def add_metric(self, metric):
-        """Store a metric through the repository and return the stored entity."""
-        raise NotImplementedError
-
-    def get_all_metrics(self):
-        """Retrieve all stored metrics."""
-        self.calls.append("get_all_metrics")
-        if self.error is not None:
-            raise self.error
-        return self.metrics
-
-
-def build_client(service=None, db="fake-db"):
-    """Build a test client or client double with the supplied dependencies."""
-    app = FastAPI()
-    app.include_router(aeko_metrics_handlers.router)
-    app.state.db = db
-    if service is not None:
-        app.dependency_overrides[aeko_metrics_handlers.get_aeko_metrics_service] = lambda: service
-    return TestClient(app)
-
-
-def test_the_route_returns_every_row():
-    """Verify that the route returns every row."""
-    service = StubMetricsService([build_metric(id=METRIC_DOCUMENT["_id"])])
-
-    response = build_client(service).get(ROUTE)
-
-    assert response.status_code == 200
-    assert response.json() == [
-        {
-            "id": METRIC_DOCUMENT["_id"],
-            "id_request": METRIC_DOCUMENT["id_request"],
-            "latency": 4823,
-            "error_description": None,
-            "flow": "conversational",
-            "cost_usd": 0.000015,
-            "used_agents": [AGENT_DOCUMENT],
-        }
-    ]
-
-
-def test_the_route_reports_a_failed_run_as_the_failure_it_was():
-    """Verify that the route reports a failed run as the failure it was."""
-    service = StubMetricsService(
-        [build_metric(id=METRIC_DOCUMENT["_id"], error_description="boom")]
-    )
-
-    response = build_client(service).get(ROUTE)
-
-    assert response.json()[0]["error_description"] == "boom"
-
-
-def test_an_empty_database_answers_with_an_empty_list():
-    """Verify that an empty database answers with an empty list."""
-    response = build_client(StubMetricsService([])).get(ROUTE)
-
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-def test_the_route_maps_an_unexpected_error_to_500():
-    """Verify that the route maps an unexpected error to 500."""
-    response = build_client(StubMetricsService(error=RuntimeError("mongo exploded"))).get(ROUTE)
-
-    assert response.status_code == 500
-    assert "mongo exploded" in response.json()["detail"]
-
-
-def test_the_route_returns_503_when_the_database_is_not_initialized():
-    """Verify that the route returns 503 when the database is not initialized."""
-    response = build_client(service=None, db=None).get(ROUTE)
-
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Database is not initialized"
-
-
-def test_the_dependency_builds_the_real_stack():
-    """Verify that the dependency builds the real stack."""
-    database = StubDatabase(aeko_metrics=StubCollection(find_result=[METRIC_DOCUMENT]))
-
-    response = build_client(service=None, db=database).get(ROUTE)
-
-    assert response.status_code == 200
-    assert response.json()[0]["id_request"] == METRIC_DOCUMENT["id_request"]
-
-
-def test_only_the_read_is_exposed():
-    """Verify that only the read is exposed."""
-    app = FastAPI()
-    app.include_router(aeko_metrics_handlers.router)
-
-    methods = {method for route in app.routes for method in getattr(route, "methods", set())}
-    assert methods <= {"GET", "HEAD"}
-
-
-def test_the_route_is_registered_on_the_application(api_main):
-    """Verify that the route is registered on the application."""
-    assert "get" in api_main.app.openapi()["paths"].get(ROUTE, {})
+def test_the_metrics_list_route_is_not_exposed(api_main):
+    """Verify that the public metrics list route was removed."""
+    with TestClient(api_main.app) as client:
+        response = client.get(ROUTE)
+    assert response.status_code == 404
 
 
 def test_the_lifespan_registers_a_sink_and_takes_it_back_off(api_main):

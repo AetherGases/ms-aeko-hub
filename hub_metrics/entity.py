@@ -1,5 +1,8 @@
 """Define the domain entities for HTTP request metrics."""
 
+from datetime import datetime
+
+
 class Metric:
     """One request, as a dashboard needs it."""
 
@@ -15,9 +18,11 @@ class Metric:
         endpoint: str,
         id: str | None = None,
         origin: str = "internal",
+        created_at: datetime | None = None,
     ):
         self.id = id
         self.latency = latency
         self.response_status = response_status
         self.endpoint = endpoint
         self.origin = origin
+        self.created_at = created_at

@@ -2,6 +2,7 @@
 
 import asyncio
 import re
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -14,7 +15,6 @@ from hub_metrics.database.repository import Repository, metric_from_data
 from hub_metrics.entity import Metric
 from hub_metrics.hub_metrics import IRepository, IService
 from hub_metrics.service import Service
-from internal.http import hub_metrics_handlers
 from internal.shared import event_tracking
 from internal.shared.event_tracking import (
     CRASHED_STATUS,
@@ -33,6 +33,8 @@ from internal.shared.request_log import RequestLogMiddleware
 from tests.mongo_doubles import StubCollection, StubDatabase
 
 ROUTE = "/ai/hub-metrics"
+
+CREATED_AT = datetime(2026, 3, 10, 12, 0, 0)
 
 HEADER = re.compile(r"^\[aeko-hub\] \[request\] \[[^\]]+\] (?P<description>.*)$")
 LINE = re.compile(r"^\[aeko-hub\] \[(?P<module>\w+)\] \[[^\]]+\] (?P<description>.*)$")
@@ -109,13 +111,19 @@ def test_a_metric_can_be_built_with_the_identifier_it_was_stored_under():
     assert build_metric(id=METRIC_DOCUMENT["_id"]).id == METRIC_DOCUMENT["_id"]
 
 
-def test_the_write_query_is_the_document_the_dashboard_reads():
+def test_the_write_query_is_the_document_the_dashboard_reads(monkeypatch):
     """Verify that the write query is the document the dashboard reads."""
+    monkeypatch.setattr(
+        q,
+        "datetime",
+        SimpleNamespace(utcnow=lambda: CREATED_AT),
+    )
     assert q.create_metric_query(build_metric()) == {
         "latency": "12.4ms",
         "response_status": 200,
         "endpoint": USER_ROUTE_TEMPLATE,
         "origin": "internal",
+        "created_at": CREATED_AT,
     }
 
 
@@ -151,8 +159,13 @@ def test_repository_implements_the_repository_interface():
     assert Repository.__abstractmethods__ == frozenset()
 
 
-def test_creating_a_metric_stores_the_document():
+def test_creating_a_metric_stores_the_document(monkeypatch):
     """Verify that creating a metric stores the document."""
+    monkeypatch.setattr(
+        q,
+        "datetime",
+        SimpleNamespace(utcnow=lambda: CREATED_AT),
+    )
     repository, database = build_repository()
 
     repository.create_metric(build_metric())
@@ -633,98 +646,11 @@ def test_the_real_application_answers_with_the_identifier_of_the_stored_row(api_
     assert response.headers["X-Request-Id"] == str(stored[0]["_id"])
 
 
-class StubMetricsService:
-    def __init__(self, metrics=None, error=None):
-        self.metrics = metrics or []
-        self.error = error
-        self.calls = []
-
-    def add_metric(self, metric):
-        """Store a metric through the repository and return the stored entity."""
-        raise NotImplementedError
-
-    def get_all_metrics(self):
-        """Retrieve all stored metrics."""
-        self.calls.append("get_all_metrics")
-        if self.error is not None:
-            raise self.error
-        return self.metrics
-
-
-def build_client(service=None, db="fake-db"):
-    """Build a test client or client double with the supplied dependencies."""
-    app = FastAPI()
-    app.include_router(hub_metrics_handlers.router)
-    app.state.db = db
-    if service is not None:
-        app.dependency_overrides[hub_metrics_handlers.get_hub_metrics_service] = lambda: service
-    return TestClient(app)
-
-
-def test_the_route_returns_every_row():
-    """Verify that the route returns every row."""
-    service = StubMetricsService([build_metric(id=METRIC_DOCUMENT["_id"])])
-
-    response = build_client(service).get(ROUTE)
-
-    assert response.status_code == 200
-    assert response.json() == [
-        {
-            "id": METRIC_DOCUMENT["_id"],
-            "latency": "12.4ms",
-            "response_status": 200,
-            "endpoint": USER_ROUTE_TEMPLATE,
-            "origin": "internal",
-        }
-    ]
-
-
-def test_an_empty_database_answers_with_an_empty_list():
-    """Verify that an empty database answers with an empty list."""
-    response = build_client(StubMetricsService([])).get(ROUTE)
-
-    assert response.status_code == 200
-    assert response.json() == []
-
-
-def test_the_route_maps_an_unexpected_error_to_500():
-    """Verify that the route maps an unexpected error to 500."""
-    response = build_client(StubMetricsService(error=RuntimeError("mongo exploded"))).get(ROUTE)
-
-    assert response.status_code == 500
-    assert "mongo exploded" in response.json()["detail"]
-
-
-def test_the_route_returns_503_when_the_database_is_not_initialized():
-    """Verify that the route returns 503 when the database is not initialized."""
-    response = build_client(service=None, db=None).get(ROUTE)
-
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Database is not initialized"
-
-
-def test_the_dependency_builds_the_real_stack():
-    """Verify that the dependency builds the real stack."""
-    database = StubDatabase(hub_metrics=StubCollection(find_result=[METRIC_DOCUMENT]))
-
-    response = build_client(service=None, db=database).get(ROUTE)
-
-    assert response.status_code == 200
-    assert response.json()[0]["id"] == METRIC_DOCUMENT["_id"]
-
-
-def test_only_the_read_is_exposed():
-    """Verify that only the read is exposed."""
-    app = FastAPI()
-    app.include_router(hub_metrics_handlers.router)
-
-    methods = {method for route in app.routes for method in getattr(route, "methods", set())}
-    assert methods <= {"GET", "HEAD"}
-
-
-def test_the_route_is_registered_on_the_application(api_main):
-    """Verify that the route is registered on the application."""
-    assert "get" in api_main.app.openapi()["paths"].get(ROUTE, {})
+def test_the_metrics_list_route_is_not_exposed(api_main):
+    """Verify that the public metrics list route was removed."""
+    with TestClient(api_main.app) as client:
+        response = client.get(ROUTE)
+    assert response.status_code == 404
 
 
 def test_the_lifespan_registers_a_sink_and_takes_it_back_off(api_main):
@@ -746,6 +672,7 @@ def test_every_request_of_the_real_application_lands_in_the_collection(api_main)
     assert stored[0]["endpoint"] == "/no-such-endpoint"
     assert stored[0]["latency"].endswith("ms")
     assert stored[0]["origin"] == "internal"
+    assert isinstance(stored[0]["created_at"], datetime)
     assert str(stored[0]["_id"])
 
 
@@ -801,11 +728,9 @@ def test_a_document_missing_origin_reads_as_internal():
     assert metric_from_data({"_id": "1"}).origin == "internal"
 
 
-def test_the_route_returns_origin():
-    """Verify that the route returns origin."""
-    service = StubMetricsService([build_metric(id=METRIC_DOCUMENT["_id"])])
-    response = build_client(service).get(ROUTE)
-    assert response.json()[0]["origin"] == "internal"
+def test_a_document_missing_created_at_reads_as_unset():
+    """Verify that a document missing created_at reads as unset."""
+    assert metric_from_data({"_id": "1"}).created_at is None
 
 
 def test_a_tracked_request_records_the_route_template(api_main):

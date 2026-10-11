@@ -40,4 +40,5 @@ def metric_from_data(data: dict) -> Metric:
         response_status=data.get("response_status", 0),
         endpoint=data.get("endpoint", ""),
         origin=data.get("origin", "internal"),
+        created_at=data.get("created_at"),
     )

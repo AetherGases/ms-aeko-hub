@@ -1,5 +1,7 @@
 """Build MongoDB filters and documents for HTTP request metrics."""
 
+from datetime import datetime
+
 from hub_metrics.entity import Metric
 from internal.database.object_id import normalize_id
 
@@ -12,6 +14,7 @@ def create_metric_query(metric: Metric) -> dict:
         "response_status": metric.response_status,
         "endpoint": metric.endpoint,
         "origin": metric.origin,
+        "created_at": metric.created_at or datetime.utcnow(),
     }
 
     if metric.id is not None:
