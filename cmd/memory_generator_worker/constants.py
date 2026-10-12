@@ -8,6 +8,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from aeko_metrics.constants import MEMORY_WORKER_ID_REQUEST
+
 load_dotenv(Path(__file__).resolve().parents[2] / ".env", override=False)
 
 SESSION_INACTIVITY_MINUTES = int(os.environ["SESSION_INACTIVITY_MINUTES"])

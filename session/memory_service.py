@@ -19,6 +19,7 @@ class Service:
         summary_generator,
         inactivity_minutes: int,
         memory_field: str,
+        aeko_id_request: str | None = None,
     ):
         self.session_repository = session_repository
         self.cache_repository = cache_repository
@@ -26,6 +27,7 @@ class Service:
         self.summary_generator = summary_generator
         self.inactivity_minutes = inactivity_minutes
         self.memory_field = memory_field
+        self.aeko_id_request = aeko_id_request
 
     def run(self) -> None:
         """Harvest expired windows into user memories, then refresh active session caches."""
@@ -69,7 +71,7 @@ class Service:
         return max(1, int(remaining))
 
     def _generate_summary(self, messages) -> str:
-        id_request = new_id_request()
+        id_request = self.aeko_id_request or new_id_request()
         try:
             response = self.summary_generator.generate_summary(messages, id_request=id_request)
         except Exception as exc:

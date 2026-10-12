@@ -11,6 +11,15 @@ from user.user import IRepository as IUserRepository
 
 SESSION_NAME_MAX_LENGTH = 60
 
+
+def _metric_company(user) -> int:
+    """Return the company snapshot required on every non-worker aeko_metrics row."""
+    company = user.id_external_company
+    if isinstance(company, bool) or not isinstance(company, int) or company <= 0:
+        raise ValueError("id_external_company is required before running Aeko.")
+    return company
+
+
 class Service(IService):
     def __init__(self, repository, cache_repository=None, inactivity_minutes=20):
         self.repository = repository
@@ -56,6 +65,8 @@ class Service(IService):
             if not user:
                 raise ValueError(f"User with id_user {id_user} does not exist.")
 
+            id_external_company = _metric_company(user)
+
             memories = [
                 memory
                 for memory in user_repository.get_user_memories(id_user)
@@ -74,7 +85,7 @@ class Service(IService):
             record_aeko_metrics(
                 response.aeko_metrics,
                 id_external_user=user.id_external_user,
-                id_external_company=user.id_external_company,
+                id_external_company=id_external_company,
             )
 
             message = _internal_message_from_aeko_message(response.message)
@@ -128,7 +139,7 @@ def _run(messenger, input: str, session, id_request: str, user):
         record_aeko_metrics(
             getattr(exc, "aeko_metrics", None),
             id_external_user=user.id_external_user,
-            id_external_company=user.id_external_company,
+            id_external_company=_metric_company(user),
         )
         raise
 

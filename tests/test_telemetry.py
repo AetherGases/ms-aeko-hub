@@ -1,11 +1,148 @@
 """Verify OpenTelemetry metric export hooks."""
 
+import os
 from datetime import datetime
 from types import SimpleNamespace
 
 from aeko_metrics.entity import AgentMetric, Metric as AekoMetric
 from hub_metrics.entity import Metric as HubMetric
 from internal.observability import telemetry
+from internal.observability.telemetry import (
+    _dynatrace_authorization,
+    _latency_ms,
+    _normalize_metrics_endpoint,
+    _otlp_auth_headers,
+    _parse_headers,
+)
+
+
+def test_latency_ms_parses_milliseconds_and_rejects_invalid_values():
+    assert _latency_ms("10.5ms") == 10.5
+    assert _latency_ms("not-a-number-ms") == 0.0
+    assert _latency_ms("5s") == 0.0
+
+
+def test_parse_headers_skips_malformed_segments():
+    assert _parse_headers("Authorization=Bearer x, bad, key=value") == {
+        "Authorization": "Bearer x",
+        "key": "value",
+    }
+
+
+def test_dynatrace_authorization_preserves_existing_scheme():
+    assert _dynatrace_authorization("Bearer tok") == "Bearer tok"
+    assert _dynatrace_authorization("api-token tok") == "api-token tok"
+    assert _dynatrace_authorization("") == ""
+
+
+def test_otlp_auth_headers_prefers_explicit_headers(monkeypatch):
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer explicit")
+    monkeypatch.setenv("DT_PLATFORM_TOKEN", "ignored")
+    assert _otlp_auth_headers() == {"Authorization": "Bearer explicit"}
+
+
+def test_otlp_auth_headers_returns_none_when_headers_parse_empty(monkeypatch):
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "not-a-header")
+    monkeypatch.delenv("DT_PLATFORM_TOKEN", raising=False)
+    assert _otlp_auth_headers() is None
+
+
+def test_normalize_metrics_endpoint_appends_metrics_suffix_for_otlp_base():
+    assert _normalize_metrics_endpoint("https://dt.example/api/v2/otlp") == (
+        "https://dt.example/api/v2/otlp/v1/metrics"
+    )
+    assert _normalize_metrics_endpoint("https://dt.example/api/v2/otlp/v1/metrics") == (
+        "https://dt.example/api/v2/otlp/v1/metrics"
+    )
+    assert _normalize_metrics_endpoint("") == ""
+
+
+def test_platform_token_uses_bearer_authorization():
+    """Verify that Dynatrace platform tokens use the Bearer scheme for OTLP."""
+    assert _dynatrace_authorization("dt0c01.example") == "Bearer dt0c01.example"
+
+
+def test_configure_is_idempotent_when_already_configured(monkeypatch):
+    telemetry.shutdown()
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    try:
+        telemetry.configure()
+        provider = telemetry._provider
+        telemetry.configure()
+        assert telemetry._provider is provider
+    finally:
+        telemetry.shutdown()
+
+
+def test_configure_accepts_an_injected_metric_reader(monkeypatch):
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    telemetry.shutdown()
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    try:
+        telemetry.configure(metric_reader=InMemoryMetricReader())
+        assert telemetry._provider is not None
+    finally:
+        telemetry.shutdown()
+
+
+def test_configure_builds_otlp_exporter_when_endpoint_is_set(monkeypatch):
+    telemetry.shutdown()
+    captured = []
+
+    class FakeExporter:
+        _preferred_temporality = {}
+        _preferred_aggregation = {}
+
+        def __init__(self, endpoint, headers, preferred_temporality):
+            captured.append((endpoint, headers, preferred_temporality))
+
+        def shutdown(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(telemetry, "OTLPMetricExporter", FakeExporter)
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "https://dt.example/api/v2/otlp")
+    monkeypatch.setenv("OTEL_METRIC_EXPORT_INTERVAL_MS", "5000")
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+    monkeypatch.setenv("DT_PLATFORM_TOKEN", "dt0c01.example")
+    try:
+        telemetry.configure()
+        assert captured[0][0] == "https://dt.example/api/v2/otlp/v1/metrics"
+        assert captured[0][1] == {"Authorization": "Bearer dt0c01.example"}
+    finally:
+        telemetry.shutdown()
+
+
+def test_otlp_auth_headers_returns_none_without_token_or_headers(monkeypatch):
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+    monkeypatch.delenv("DT_PLATFORM_TOKEN", raising=False)
+    assert _otlp_auth_headers() is None
+
+
+def test_normalize_metrics_endpoint_returns_custom_urls_unchanged():
+    assert _normalize_metrics_endpoint("https://collector.example/otlp") == (
+        "https://collector.example/otlp"
+    )
+
+
+def test_configure_prefers_delta_metric_temporality_for_dynatrace(monkeypatch):
+    """Verify that OTLP export defaults to DELTA temporality required by Dynatrace."""
+    telemetry.shutdown()
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    try:
+        telemetry.configure()
+        assert os.getenv("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE") == "DELTA"
+    finally:
+        telemetry.shutdown()
+
+
+def test_dt_platform_token_builds_otlp_headers(monkeypatch):
+    """Verify that DT_PLATFORM_TOKEN is used when OTEL_EXPORTER_OTLP_HEADERS is unset."""
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
+    monkeypatch.setenv("DT_PLATFORM_TOKEN", "dt0c01.example")
+    headers = _otlp_auth_headers()
+    assert headers == {"Authorization": "Bearer dt0c01.example"}
 
 
 def test_record_hub_metric_is_a_no_op_before_configure():
@@ -40,9 +177,8 @@ def test_record_hub_metric_forwards_attributes_to_otel():
             1,
             {
                 "endpoint": "/ai/user/{id_external_user}",
-                "response_status": 201,
+                "response_status": "201",
                 "origin": "openai",
-                "request_id": "req-1",
             },
         )
     ]
@@ -89,3 +225,85 @@ def test_record_aeko_run_forwards_attributes_to_otel():
     assert counter.calls[0][1]["id_external_company"] == 90
     assert latency.calls[0][0] == 4823
     assert cost.calls[0][0] == 0.02
+
+
+def test_record_aeko_run_exports_agent_and_tool_invocations():
+    """Verify used_agents / used_tools map to OTLP invocation counters."""
+    runs = SimpleNamespace(calls=[], add=lambda value, attrs: runs.calls.append((value, attrs)))
+    latency = SimpleNamespace(calls=[], record=lambda value, attrs: latency.calls.append((value, attrs)))
+    cost = SimpleNamespace(calls=[], record=lambda value, attrs: cost.calls.append((value, attrs)))
+    agents = SimpleNamespace(calls=[], add=lambda value, attrs: agents.calls.append((value, attrs)))
+    tools = SimpleNamespace(calls=[], add=lambda value, attrs: tools.calls.append((value, attrs)))
+    telemetry._aeko_runs = runs
+    telemetry._aeko_latency = latency
+    telemetry._aeko_cost = cost
+    telemetry._aeko_agent_invocations = agents
+    telemetry._aeko_tool_invocations = tools
+    try:
+        telemetry.record_aeko_run(
+            AekoMetric(
+                id_request="req-2",
+                latency=100,
+                error_description=None,
+                flow="analytical",
+                cost_usd=0.01,
+                used_agents=[
+                    AgentMetric(
+                        name="planner",
+                        used_tools=["search", "calc"],
+                    ),
+                    AgentMetric(name="writer", used_tools=[]),
+                ],
+                id_external_company=1,
+            )
+        )
+    finally:
+        telemetry._aeko_runs = None
+        telemetry._aeko_latency = None
+        telemetry._aeko_cost = None
+        telemetry._aeko_agent_invocations = None
+        telemetry._aeko_tool_invocations = None
+
+    assert len(agents.calls) == 2
+    assert agents.calls[0][1]["agent_name"] == "planner"
+    assert agents.calls[0][1]["flow"] == "analytical"
+    assert len(tools.calls) == 2
+    assert tools.calls[0][1] == {
+        "tool_name": "search",
+        "agent_name": "planner",
+        "flow": "analytical",
+        "failed": False,
+    }
+
+
+def test_record_aeko_run_is_a_no_op_before_configure():
+    telemetry.record_aeko_run(
+        AekoMetric(id_request="req-0", latency=1, flow="conversational", used_agents=[])
+    )
+
+
+def test_record_aeko_run_skips_agent_counters_when_not_configured():
+    """Verify that run metrics still export when agent/tool counters are absent."""
+    runs = SimpleNamespace(calls=[], add=lambda value, attrs: runs.calls.append((value, attrs)))
+    latency = SimpleNamespace(calls=[], record=lambda value, attrs: latency.calls.append((value, attrs)))
+    cost = SimpleNamespace(calls=[], record=lambda value, attrs: cost.calls.append((value, attrs)))
+    telemetry._aeko_runs = runs
+    telemetry._aeko_latency = latency
+    telemetry._aeko_cost = cost
+    telemetry._aeko_agent_invocations = None
+    telemetry._aeko_tool_invocations = None
+    try:
+        telemetry.record_aeko_run(
+            AekoMetric(
+                id_request="req-3",
+                latency=50,
+                flow="conversational",
+                used_agents=[AgentMetric(name="FAQ", used_tools=["calc"])],
+            )
+        )
+    finally:
+        telemetry._aeko_runs = None
+        telemetry._aeko_latency = None
+        telemetry._aeko_cost = None
+
+    assert len(runs.calls) == 1

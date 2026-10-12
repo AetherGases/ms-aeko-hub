@@ -6,8 +6,10 @@ import pytest
 
 from cmd.memory_generator_worker.constants import (
     CONVERSATION_MEMORY_FIELD,
+    MEMORY_WORKER_ID_REQUEST,
     SESSION_INACTIVITY_MINUTES,
 )
+from cmd.memory_generator_worker.main import build_aeko_metrics_sink
 from session.cache.cache import ICacheRepository
 from session.cache.key import activity_key, window_key
 from session.cache.repository import Repository as CacheRepository
@@ -135,6 +137,7 @@ def build_memory_service(
     summary_generator,
     inactivity_minutes=SESSION_INACTIVITY_MINUTES,
     memory_field=CONVERSATION_MEMORY_FIELD,
+    aeko_id_request=MEMORY_WORKER_ID_REQUEST,
 ):
     """Build a memory service with the worker defaults."""
     return MemoryService(
@@ -144,6 +147,7 @@ def build_memory_service(
         summary_generator,
         inactivity_minutes=inactivity_minutes,
         memory_field=memory_field,
+        aeko_id_request=aeko_id_request,
     )
 
 
@@ -229,6 +233,7 @@ def test_memory_service_harvests_an_expired_window_into_user_memory():
     assert memory.field == CONVERSATION_MEMORY_FIELD
     assert memory.description == "session recap"
     assert cache_repository.get_window(ID_SESSION) is None
+    assert summary_generator.calls[0][1] == MEMORY_WORKER_ID_REQUEST
 
 
 def test_memory_service_syncs_recent_sessions_before_refreshing_activity():
@@ -328,6 +333,23 @@ def test_repository_get_sessions_updated_since_returns_matching_sessions():
 
     assert len(sessions) == 1
     assert sessions[0].id == ID_SESSION
+
+
+def test_worker_metrics_sink_persists_memory_worker_id():
+    """Verify that the worker sink stores metrics with the fixed request id."""
+    database = StubDatabase(aeko_metrics=StubCollection())
+    sink = build_aeko_metrics_sink(database)
+    sink(
+        fake_aeko.AekoMetrics(
+            id_request=MEMORY_WORKER_ID_REQUEST,
+            latency=12,
+            flow=fake_aeko.CONVERSATIONAL_FLOW,
+            used_agents=[],
+        )
+    )
+    (document,) = database["aeko_metrics"].call_args("insert_one")[0]
+    assert document["id_request"] == MEMORY_WORKER_ID_REQUEST
+    assert document.get("id_external_company") is None
 
 
 def test_fake_messenger_generate_summary_returns_a_scripted_summary(configured_sdk):

@@ -13,18 +13,15 @@ from redis import Redis
 
 from aeko import Aeko, AekoMessage, AekoMessenger, AekoUser
 from aeko_metrics.database.repository import Repository as AekoMetricsRepository
-from aeko_metrics.entity import AgentMetric, Metric as AekoMetric
+from aeko_metrics.metric_sink import metric_from_sdk_run
 from aeko_metrics.service import Service as AekoMetricsService
 from cmd.memory_generator_worker.constants import (
     CONVERSATION_MEMORY_FIELD,
+    MEMORY_WORKER_ID_REQUEST,
     REDIS_SCAN_COUNT,
     SESSION_INACTIVITY_MINUTES,
 )
 from internal.shared import Module, operation, set_aeko_metrics_sink
-from internal.shared.event_tracking import (
-    current_metric_id_external_company,
-    current_metric_id_external_user,
-)
 from session.cache.repository import Repository as CacheRepository
 from session.database.repository import Repository as SessionRepository
 from session.memory_service import Service as MemoryService
@@ -49,26 +46,7 @@ def build_aeko_metrics_sink(database):
 
     def sink(metrics) -> None:
         """Persist the supplied tracking data through the configured metric service."""
-        service.add_metric(
-            AekoMetric(
-                id_request=metrics.id_request,
-                latency=metrics.latency,
-                error_description=metrics.error_description,
-                flow=metrics.flow,
-                used_agents=[
-                    AgentMetric(
-                        name=agent.name,
-                        input_tokens=agent.input_tokens,
-                        output_tokens=agent.output_tokens,
-                        llm=agent.llm,
-                        used_tools=list(agent.used_tools),
-                    )
-                    for agent in metrics.used_agents
-                ],
-                id_external_user=current_metric_id_external_user(),
-                id_external_company=current_metric_id_external_company(),
-            )
-        )
+        service.add_metric(metric_from_sdk_run(metrics))
 
     return sink
 
@@ -142,6 +120,7 @@ def main() -> None:
         _SummaryGenerator(build_summary_generator()),
         inactivity_minutes=SESSION_INACTIVITY_MINUTES,
         memory_field=CONVERSATION_MEMORY_FIELD,
+        aeko_id_request=MEMORY_WORKER_ID_REQUEST,
     )
 
     try:

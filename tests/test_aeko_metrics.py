@@ -9,7 +9,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from aeko_metrics.aeko_metrics import IRepository, IService
+from aeko_metrics.constants import MEMORY_WORKER_ID_REQUEST
 from aeko_metrics.cost import cost_usd
+from aeko_metrics.metric_sink import metric_from_sdk_run
 from aeko_metrics.database import query as q
 from aeko_metrics.database.repository import Repository, metric_from_data
 from aeko_metrics.entity import AgentMetric, Metric
@@ -207,6 +209,78 @@ def test_an_unknown_model_contributes_zero():
     """Verify that an unknown model contributes zero."""
     agents = [build_agent(input_tokens=1_000_000, output_tokens=1_000_000, llm="mystery-model")]
     assert cost_usd(agents, PRICES) == 0.0
+
+
+def test_cost_usd_resolves_provider_model_paths():
+    """Verify that LangChain/Gemini model ids match AEKO_MODEL_PRICES keys."""
+    agents = [
+        build_agent(input_tokens=1_000_000, output_tokens=0, llm="models/gemini-3.5-flash"),
+    ]
+    assert cost_usd(agents, PRICES) == 0.15
+
+
+def test_metric_from_sdk_run_requires_company_outside_memory_worker():
+    """Verify that API runs must carry id_external_company before persistence."""
+    metrics = build_sdk_metrics()
+    with pytest.raises(ValueError, match="id_external_company"):
+        metric_from_sdk_run(metrics)
+
+
+def test_metric_from_sdk_run_allows_memory_worker_without_company():
+    """Verify that memory worker runs may omit id_external_company."""
+    metrics = build_sdk_metrics(id_request=MEMORY_WORKER_ID_REQUEST)
+    metric = metric_from_sdk_run(metrics)
+    assert metric.id_request == MEMORY_WORKER_ID_REQUEST
+    assert metric.id_external_company is None
+
+
+def test_metric_from_sdk_run_with_bound_company():
+    """Verify that API runs persist the company bound during record_aeko_metrics."""
+    from internal.shared.event_tracking import record_aeko_metrics
+
+    stored = []
+
+    def sink(metrics):
+        stored.append(metric_from_sdk_run(metrics))
+
+    set_aeko_metrics_sink(sink)
+    record_aeko_metrics(
+        build_sdk_metrics(),
+        id_external_user=12345,
+        id_external_company=90,
+    )
+    set_aeko_metrics_sink(None)
+
+    assert stored[0].id_external_company == 90
+    assert stored[0].cost_usd == 0.000015
+
+
+def test_cost_usd_resolves_comma_separated_llm():
+    """Verify that the first resolvable model in a comma-separated llm list is used."""
+    agents = [
+        build_agent(
+            input_tokens=1_000_000,
+            output_tokens=0,
+            llm="unknown-model, gemini-3.5-flash",
+        )
+    ]
+    assert cost_usd(agents, PRICES) == 0.15
+
+
+def test_cost_usd_with_empty_llm_uses_lookup_on_whitespace():
+    """Verify that blank llm strings still go through lookup_rates."""
+    agents = [build_agent(input_tokens=0, output_tokens=0, llm="")]
+    assert cost_usd(agents, PRICES) == 0.0
+
+
+def test_cost_usd_uses_configured_fast_model_alias(monkeypatch):
+    """Verify that AEKO_FAST_MODEL is priced when the table uses a different key."""
+    monkeypatch.setenv("AEKO_FAST_MODEL", "gemini-3.5-flash-lite")
+    prices = {
+        "gemini-3.1-flash-lite": {"input_per_million": 0.025, "output_per_million": 0.15},
+    }
+    agents = [build_agent(input_tokens=1_000_000, output_tokens=0, llm="gemini-3.5-flash-lite")]
+    assert cost_usd(agents, prices) == 0.025
 
 
 def test_a_document_missing_cost_usd_reads_as_zero():

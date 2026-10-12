@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from session.entity import Message, Session, SessionWindow
-from session.service import Service
+from session.service import Service, _metric_company
 from session.session import GuardrailRejectedError, IService
 from internal.shared.event_tracking import bind_id_request, set_aeko_metrics_sink, unbind_id_request
 from user.entity import User, UserMemory
@@ -340,6 +340,37 @@ def test_get_session_messages_wraps_unexpected_errors():
 
     with pytest.raises(RuntimeError, match="mongo down"):
         service.get_session_messages(ID_SESSION)
+
+
+def test_metric_company_requires_positive_integer():
+    """Verify that SDK metrics require a positive id_external_company."""
+    with pytest.raises(ValueError, match="id_external_company"):
+        _metric_company(
+            User(
+                id=ID_USER,
+                id_external_user=12345,
+                role="analyst",
+                usecase="report_generation",
+                id_external_company=None,
+            )
+        )
+
+
+def test_send_message_requires_id_external_company():
+    """Verify that chat is rejected when the user has no company snapshot."""
+    service, _ = build_service()
+    users = StubUserRepository(
+        User(
+            id=ID_USER,
+            id_external_user=12345,
+            role="analyst",
+            usecase="report_generation",
+            id_external_company=None,
+        )
+    )
+
+    with pytest.raises(ValueError, match="id_external_company"):
+        send(service, users=users)
 
 
 def test_send_message_returns_the_exchange():
