@@ -58,6 +58,14 @@ class Service(IService):
             raise ValueError("id_external_company is required to analyze an inventory.")
 
         existing = _current_plan(self.repository, id_external_inventory)
+        if (
+            existing is not None
+            and existing.id_external_company is not None
+            and existing.id_external_company != id_external_company
+        ):
+            raise ValueError(
+                "Improvement plan for this inventory belongs to another company."
+            )
 
         aeko_inventory_analyzer = aeko_inventory_analyzer_factory()
         aeko_inventory_analyzer.set_context(_context_from(existing))

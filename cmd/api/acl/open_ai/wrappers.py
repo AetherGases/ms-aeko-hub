@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from langchain_core.tools import Tool, create_schema_from_function
 
-from cmd.api.acl.open_ai.identity import current_id_external_user
+from cmd.api.acl.open_ai.identity import current_id_external_company, current_id_external_user
 
 _COMPANY_CHECKED_PLAN_TOOLS = {
     "get_improvement_plan_by_inventory",
@@ -52,16 +52,18 @@ def _chatgpt_function(
     func: Callable[..., Any],
     *,
     inject_identity: bool,
+    inject_company: bool,
     check_company: bool,
 ) -> Callable[..., Any]:
     """Return a ChatGPT-facing function that hides id_external_user."""
 
     signature = inspect.signature(func)
+    hidden = {"id_external_user", "id_external_company"}
     public_signature = signature.replace(
         parameters=[
             parameter
             for name, parameter in signature.parameters.items()
-            if name != "id_external_user"
+            if name not in hidden
         ]
     )
 
@@ -73,9 +75,12 @@ def _chatgpt_function(
         bound.apply_defaults()
         if check_company:
             _assert_plan_belongs_to_user_company(bound.arguments["id_external_inventory"])
+        call_kwargs = dict(kwargs)
         if inject_identity:
-            return func(*args, id_external_user=current_id_external_user(), **kwargs)
-        return func(*args, **kwargs)
+            call_kwargs["id_external_user"] = current_id_external_user()
+        if inject_company:
+            call_kwargs["id_external_company"] = current_id_external_company()
+        return func(*args, **call_kwargs)
 
     wrapper.__signature__ = public_signature
     return wrapper
@@ -104,15 +109,18 @@ def _wrap_chatgpt_tool(tool: Tool) -> Tool:
     func = tool.func
     signature = inspect.signature(func)
     inject_identity = "id_external_user" in signature.parameters
+    inject_company = "id_external_company" in signature.parameters
     check_company = tool.name in _COMPANY_CHECKED_PLAN_TOOLS
-    if not inject_identity and not check_company:
+    if not inject_identity and not inject_company and not check_company:
         return tool
 
     wrapped = _chatgpt_function(
         func,
         inject_identity=inject_identity,
+        inject_company=inject_company,
         check_company=check_company,
     )
+    
     return Tool(
         name=tool.name,
         description=_strip_identity_from_description(tool.description),

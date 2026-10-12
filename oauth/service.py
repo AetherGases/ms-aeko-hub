@@ -1,4 +1,4 @@
-"""Orchestrate ChatGPT Sign in against ms-auth (login + profile), then issue this API's tokens."""
+"""Orchestrate ChatGPT Sign in against ms-auth and return the ms-auth access token on exchange."""
 
 import hmac
 import re
@@ -6,7 +6,7 @@ import secrets
 from urllib.parse import quote, urlparse
 
 from cmd.api.integrations.auth_api import login
-from cmd.api.integrations.profile_api import get_profile, profile_id
+from cmd.api.integrations.profile_api import get_profile, profile_enterprise_id, profile_id
 from oauth.constants import (
     OAUTH_AUDIENCE,
     OAUTH_AUTHORIZATION_CODE_TTL_SECONDS,
@@ -15,13 +15,22 @@ from oauth.constants import (
     OAUTH_ISSUER,
 )
 from oauth.oauth import IService
-from oauth.token import encode_access_token, pkce_s256
+from oauth.token import pkce_s256
 
 _callback_id = r"[A-Za-z0-9_-]+"
 _cimd_callback = re.compile(rf"^https://chatgpt\.com/oauth/{_callback_id}/client\.json$")
 _redirect_connector = re.compile(rf"^https://chatgpt\.com/connector/oauth/{_callback_id}$")
 _chatgpt_redirect = "https://chatgpt.com/connector_platform_oauth_redirect"
 _cimd_client = "https://chatgpt.com/oauth/client.json"
+
+
+def _expires_in_from_login_payload(payload: dict) -> int:
+    """Read ms-auth token lifetime from the login payload when present."""
+    for key in ("expiresIn", "expires_in", "accessTokenExpiresIn"):
+        value = payload.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+    return OAUTH_ACCESS_TOKEN_TTL_SECONDS
 
 
 def accepted_client_id(client_id: str) -> bool:
@@ -99,6 +108,7 @@ class Service(IService):
         try:
             profile = get_profile(access_token)
             id_external_user = profile_id(profile)
+            id_external_company = profile_enterprise_id(profile)
         except Exception as exc:
             raise ValueError("Sign in failed.") from exc
         if self.users is not None:
@@ -107,6 +117,7 @@ class Service(IService):
                     id_external_user,
                     role_from_form or "",
                     usecase,
+                    ms_auth_profile=profile,
                 )
             except Exception as exc:
                 raise ValueError("Sign in failed.") from exc
@@ -115,6 +126,9 @@ class Service(IService):
             code,
             {
                 "id_external_user": id_external_user,
+                "id_external_company": id_external_company,
+                "ms_auth_access_token": access_token,
+                "ms_auth_access_token_expires_in": _expires_in_from_login_payload(payload),
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
                 "code_challenge": code_challenge,
@@ -136,7 +150,7 @@ class Service(IService):
         code_verifier: str,
         resource=None,
     ) -> dict:
-        """Exchange a one-time authorization code for this API's access token."""
+        """Exchange a one-time authorization code for the ms-auth access token."""
         if resource is not None and resource != "" and resource != OAUTH_AUDIENCE:
             raise ValueError("resource is not accepted.")
         document = self.repository.pop(code)
@@ -153,8 +167,14 @@ class Service(IService):
             challenge, stored
         ):
             raise ValueError("Invalid PKCE verifier.")
+        access_token = document.get("ms_auth_access_token")
+        if not access_token:
+            raise ValueError("Invalid authorization code.")
+        expires_in = document.get("ms_auth_access_token_expires_in")
+        if not isinstance(expires_in, int) or expires_in <= 0:
+            expires_in = OAUTH_ACCESS_TOKEN_TTL_SECONDS
         return {
-            "access_token": encode_access_token(document["id_external_user"]),
+            "access_token": access_token,
             "token_type": "Bearer",
-            "expires_in": OAUTH_ACCESS_TOKEN_TTL_SECONDS,
+            "expires_in": expires_in,
         }

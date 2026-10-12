@@ -730,6 +730,23 @@ def test_input_inventory_rejects_an_unusable_company(bad):
     assert analyzers.built == []
 
 
+def test_input_inventory_rejects_an_existing_plan_for_another_company():
+    """Verify that input inventory does not reuse a plan stored for another company."""
+    existing = ImprovementPlan(
+        id="p1",
+        id_external_inventory=ID_INVENTORY,
+        id_external_company=99,
+        defined_problem="old",
+        method="old",
+        reasoning="old",
+    )
+    repository = StubPlanRepository(existing=existing)
+    analyzers = StubAnalyzerFactory()
+    with pytest.raises(ValueError, match="another company"):
+        run(repository=repository, analyzers=analyzers, id_external_company=90)
+    assert analyzers.built == []
+
+
 def test_the_plan_is_persisted_field_by_field():
     """Verify that the plan is persisted field by field."""
     repository = StubPlanRepository()

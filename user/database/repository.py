@@ -10,27 +10,51 @@ class Repository(IRepository):
         self.db = db
 
     @logged(Module.DATABASE, "user.create_user")
-    def create_user(self, id_external_user: int, role: str, usecase: str) -> User:
+    def create_user(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        id_external_company: int | None = None,
+    ) -> User:
         """Persist a new user and return the stored entity."""
         try:
-            document = q.create_user_query(id_external_user, role, usecase)
+            document = q.create_user_query(
+                id_external_user,
+                role,
+                usecase,
+                id_external_company=id_external_company,
+            )
             result = self.db.user.insert_one(document)
             return user_from_data({**document, "_id": result.inserted_id})
         except Exception as e:
             raise RuntimeError(f"Error creating user in database: {e}")
 
-    @logged(Module.DATABASE, "user.update_role_and_usecase")
-    def update_role_and_usecase(self, id_external_user: int, role: str, usecase: str) -> None:
-        """Persist the role and usecase on the user matching an external identifier."""
+    @logged(Module.DATABASE, "user.sync_sign_in_profile")
+    def sync_sign_in_profile(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        id_external_company: int,
+    ) -> None:
+        """Persist role, usecase, and company id after OAuth Sign in."""
         try:
-            query, update = q.update_role_and_usecase_query(id_external_user, role, usecase)
+            query, update = q.sync_sign_in_profile_query(
+                id_external_user,
+                role,
+                usecase,
+                id_external_company=id_external_company,
+            )
             result = self.db.user.update_one(query, update)
             if result.matched_count == 0:
                 raise ValueError(f"User with id_external_user {id_external_user} not found.")
         except ValueError as e:
             raise e
         except Exception as e:
-            raise RuntimeError(f"Error updating user role and usecase in database: {e}")
+            raise RuntimeError(f"Error syncing sign-in profile in database: {e}")
 
     @logged(Module.DATABASE, "user.get_user")
     def get_user(self, id_external_user) -> User:
@@ -101,5 +125,5 @@ def user_from_data(data: dict) -> User:
         id_external_user=data["id_external_user"],
         role=data["role"],
         usecase=data["usecase"],
-        id_external_company=data.get("id_external_company")
+        id_external_company=data.get("id_external_company"),
     )

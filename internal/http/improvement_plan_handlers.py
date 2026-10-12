@@ -3,6 +3,9 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
+
+from internal.http.ms_auth_authorization import ensure_company, ensure_external_user, ensure_plan_belongs_to_principal
+from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -15,7 +18,7 @@ from improvement_plan.service import Service
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
 
-router = APIRouter(tags=["Reports"])
+router = APIRouter(tags=["Reports"], dependencies=[Depends(require_ms_auth_principal)])
 
 CategoryClassification = Literal["UPSTREAM", "DOWNSTREAM"]
 
@@ -128,8 +131,13 @@ def extracted_inventory_data(inventory: ExtractedInventory) -> ExtractedInventor
 
 
 def _http_status_for_value_error(exc: ValueError) -> int:
-    """Map missing-resource domain errors to 404 and remaining validation errors to 400."""
-    return 404 if "not found" in str(exc).lower() else 400
+    """Map domain validation errors to 404, 403, or 400."""
+    message = str(exc).lower()
+    if "not found" in message:
+        return 404
+    if "another company" in message or "does not belong" in message:
+        return 403
+    return 400
 
 
 @router.post(
@@ -175,6 +183,7 @@ def _http_status_for_value_error(exc: ValueError) -> int:
 )
 async def input_report(
     request: Request,
+    principal: MsAuth,
     body: ReportRequestData,
     service: IService = Depends(get_improvement_plan_service),
 ) -> ExtractedInventoryData:
@@ -183,6 +192,9 @@ async def input_report(
 
     if not aeko_inventory_analyzer_factory:
         raise HTTPException(status_code=500, detail="Aeko SDK is not initialized")
+
+    ensure_external_user(principal, body.id_external_user)
+    ensure_company(principal, body.id_external_company)
 
     try:
         inventory = await run_in_threadpool(
@@ -230,18 +242,20 @@ async def input_report(
     },
 )
 def get_report(
+    principal: MsAuth,
     id_external_inventory: int = Path(..., description="External inventory identifier whose plan should be returned.", examples=[502]),
     service: IService = Depends(get_improvement_plan_service),
 ) -> ImprovementPlanReportData:
     """Retrieve the stored textual plan for an inventory."""
     try:
         plan = service.get_by_id_external_inventory(id_external_inventory)
-        return ImprovementPlanReportData(
-            defined_problem=plan.defined_problem,
-            solving_method=plan.method,
-            reasoning=plan.reasoning,
-        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error retrieving report: {exc}") from exc
+    ensure_plan_belongs_to_principal(principal, plan)
+    return ImprovementPlanReportData(
+        defined_problem=plan.defined_problem,
+        solving_method=plan.method,
+        reasoning=plan.reasoning,
+    )

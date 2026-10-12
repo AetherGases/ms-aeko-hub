@@ -41,13 +41,13 @@ class StubUserRepository:
         """Persist the company identifier on the user document."""
         return self._run("set_id_external_company", id_user, id_external_company)
 
-    def create_user(self, id_external_user, role, usecase):
+    def create_user(self, id_external_user, role, usecase, **kwargs):
         """Persist a new user with the supplied profile fields."""
-        return self._run("create_user", id_external_user, role, usecase)
+        return self._run("create_user", id_external_user, role, usecase, kwargs)
 
-    def update_role_and_usecase(self, id_external_user, role, usecase):
-        """Persist the role and usecase on the user document."""
-        return self._run("update_role_and_usecase", id_external_user, role, usecase)
+    def sync_sign_in_profile(self, id_external_user, role, usecase, **kwargs):
+        """Persist role, usecase, and ms-auth enterprise snapshot after OAuth Sign in."""
+        return self._run("sync_sign_in_profile", id_external_user, role, usecase, kwargs)
 
 
 def test_service_implements_the_service_interface():
@@ -145,9 +145,9 @@ def test_get_mongo_user_or_create_creates_when_missing():
                 raise ValueError("User with id_external_user 99 not found.")
             return created
 
-        def create_user(self, id_external_user, role, usecase):
+        def create_user(self, id_external_user, role, usecase, **kwargs):
             """Record provisioning and return the created user."""
-            self.calls.append(("create_user", id_external_user, role, usecase))
+            self.calls.append(("create_user", id_external_user, role, usecase, kwargs))
             return created
 
     repository = Repository()
@@ -156,29 +156,39 @@ def test_get_mongo_user_or_create_creates_when_missing():
     assert service.get_mongo_user_or_create(99, "analyst", "inventory") is created
     assert repository.calls == [
         ("get_user", 99),
-        ("create_user", 99, "analyst", "inventory"),
+        ("create_user", 99, "analyst", "inventory", {}),
     ]
 
 
 def test_apply_sign_in_profile_rejects_blank_role_or_usecase():
     """Verify that apply sign in profile rejects empty role and usecase."""
+    from tests.test_profile_api import PROFILE_PAYLOAD
+
     service = Service(StubUserRepository())
 
     with pytest.raises(ValueError, match="role is required"):
-        service.apply_sign_in_profile(1, "   ", "uso")
+        service.apply_sign_in_profile(1, "   ", "uso", ms_auth_profile=PROFILE_PAYLOAD)
 
     with pytest.raises(ValueError, match="usecase is required"):
-        service.apply_sign_in_profile(1, "cargo", "")
+        service.apply_sign_in_profile(1, "cargo", "", ms_auth_profile=PROFILE_PAYLOAD)
 
 
 def test_apply_sign_in_profile_updates_an_existing_user():
-    """Verify that apply sign in profile updates role and usecase for an existing user."""
-    updated = User(id="u1", id_external_user=12345, role="novo cargo", usecase="novo uso")
+    """Verify that apply sign in profile syncs ms-auth fields for an existing user."""
+    from tests.test_profile_api import PROFILE_PAYLOAD
+
+    updated = User(
+        id="u1",
+        id_external_user=12345,
+        role="novo cargo",
+        usecase="novo uso",
+        id_external_company=90,
+    )
 
     class Repository(StubUserRepository):
-        def update_role_and_usecase(self, id_external_user, role, usecase):
-            """Record the update and return the refreshed user."""
-            self.calls.append(("update_role_and_usecase", id_external_user, role, usecase))
+        def sync_sign_in_profile(self, id_external_user, role, usecase, **kwargs):
+            """Record the ms-auth sync."""
+            self.calls.append(("sync_sign_in_profile", id_external_user, role, usecase, kwargs))
             return None
 
         def get_user(self, id_external_user):
@@ -189,49 +199,52 @@ def test_apply_sign_in_profile_updates_an_existing_user():
     repository = Repository()
     service = Service(repository)
 
-    assert service.apply_sign_in_profile(12345, "novo cargo", "novo uso") is updated
-    assert repository.calls == [
-        ("update_role_and_usecase", 12345, "novo cargo", "novo uso"),
-        ("get_user", 12345),
-    ]
+    assert (
+        service.apply_sign_in_profile(
+            12345,
+            "novo cargo",
+            "novo uso",
+            ms_auth_profile=PROFILE_PAYLOAD,
+        )
+        is updated
+    )
+    assert repository.calls[0][0] == "sync_sign_in_profile"
+    assert repository.calls[0][4]["id_external_company"] == 90
 
 
 def test_apply_sign_in_profile_creates_when_missing():
     """Verify that apply sign in profile creates the user when absent."""
-    created = User(id="u2", id_external_user=99, role="cargo", usecase="uso")
+    from tests.test_profile_api import PROFILE_PAYLOAD
+
+    created = User(
+        id="u2",
+        id_external_user=99,
+        role="cargo",
+        usecase="uso",
+        id_external_company=90,
+    )
 
     class Repository(StubUserRepository):
-        def __init__(self):
-            super().__init__()
-            self._provisioned = False
-
-        def update_role_and_usecase(self, id_external_user, role, usecase):
+        def sync_sign_in_profile(self, id_external_user, role, usecase, **kwargs):
             """Raise not found so the service creates the user."""
-            self.calls.append(("update_role_and_usecase", id_external_user, role, usecase))
+            self.calls.append(("sync_sign_in_profile", id_external_user, role, usecase, kwargs))
             raise ValueError(f"User with id_external_user {id_external_user} not found.")
 
-        def create_user(self, id_external_user, role, usecase):
+        def create_user(self, id_external_user, role, usecase, **kwargs):
             """Record provisioning and return the created user."""
-            self.calls.append(("create_user", id_external_user, role, usecase))
-            self._provisioned = True
-            return created
-
-        def get_user(self, id_external_user):
-            """Raise until the user has been provisioned."""
-            self.calls.append(("get_user", id_external_user))
-            if not self._provisioned:
-                raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            self.calls.append(("create_user", id_external_user, role, usecase, kwargs))
             return created
 
     repository = Repository()
     service = Service(repository)
 
-    assert service.apply_sign_in_profile(99, "cargo", "uso") is created
-    assert repository.calls == [
-        ("update_role_and_usecase", 99, "cargo", "uso"),
-        ("get_user", 99),
-        ("create_user", 99, "cargo", "uso"),
-    ]
+    assert (
+        service.apply_sign_in_profile(99, "cargo", "uso", ms_auth_profile=PROFILE_PAYLOAD)
+        is created
+    )
+    assert repository.calls[0][0] == "sync_sign_in_profile"
+    assert repository.calls[1][0] == "create_user"
+    assert repository.calls[1][4]["id_external_company"] == 90
 
 
 def test_get_mongo_user_or_create_wraps_unexpected_create_errors():
@@ -241,7 +254,7 @@ def test_get_mongo_user_or_create_wraps_unexpected_create_errors():
             """Raise not found so the service attempts to create the user."""
             raise ValueError(f"User with id_external_user {id_external_user} not found.")
 
-        def create_user(self, id_external_user, role, usecase):
+        def create_user(self, id_external_user, role, usecase, **kwargs):
             """Raise a transport error while inserting."""
             raise OSError("mongo down")
 

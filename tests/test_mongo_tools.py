@@ -57,7 +57,28 @@ SESSION_TOOL_NAMES = {
 }
 
 USER_ID = "65a8b3d6c0f8e1d7f4b2c010"
-USER = User(id=USER_ID, id_external_user=12345, role="analyst", usecase="report_generation")
+MS_AUTH_PROFILE = {
+    "id": 12345,
+    "cpf": "12345678901",
+    "email": "caio@example.com",
+    "name": "Caio Marcos",
+    "phone": "11999999999",
+    "image": {"id": 10, "name": "profile.jpg", "path": "/images/profiles/profile.jpg"},
+    "permissions": [],
+    "enterprise": {
+        "id": 90,
+        "name": "Aether Industria SA",
+        "tradeName": "Aether",
+        "cnpj": "12345678000199",
+    },
+    "unit": {"id": 1, "cnae": "6201500", "cnpj": "12345678000199", "isActive": True},
+}
+USER = User(
+    id=USER_ID,
+    id_external_user=12345,
+    role="analyst",
+    usecase="report_generation",
+)
 COMPANY_USER = User(
     id=USER_ID,
     id_external_user=12345,
@@ -142,7 +163,6 @@ class StubUserService:
         if self.error is not None:
             raise self.error
         return list(self.memories)
-
 
 class StubSessionService:
     """Stands in for the session service the tools read from."""
@@ -372,18 +392,30 @@ def test_list_latest_improvement_plans_rejects_an_unusable_limit(bad):
     assert plans.calls == []
 
 
-def test_get_user_profile_by_external_id_returns_role_and_usecase():
-    """Verify that get user profile by external id returns role and usecase."""
+def test_get_user_profile_by_external_id_reads_ms_auth_and_merges_role():
+    """Verify that get user profile by external id merges the bound ms-auth profile."""
+
+    from cmd.api.acl.open_ai.identity import (
+        bind_id_external_user,
+        bind_ms_auth_profile,
+        reset_id_external_user,
+        reset_ms_auth_profile,
+    )
+
     users = StubUserService(user=USER)
     bind(users=users)
+    profile_token = bind_ms_auth_profile(MS_AUTH_PROFILE)
+    user_token = bind_id_external_user(12345)
+    try:
+        result = mongo_tools._get_user_profile_by_external_id(12345)
+    finally:
+        reset_ms_auth_profile(profile_token)
+        reset_id_external_user(user_token)
 
-    result = mongo_tools._get_user_profile_by_external_id(12345)
-
-    assert result == {
-        "id_external_user": 12345,
-        "role": "analyst",
-        "usecase": "report_generation",
-    }
+    assert result["id"] == 12345
+    assert result["role"] == "analyst"
+    assert result["usecase"] == "report_generation"
+    assert result["enterprise"] == MS_AUTH_PROFILE["enterprise"]
     assert users.calls == [("get_mongo_user", 12345)]
 
 

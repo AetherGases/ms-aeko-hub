@@ -10,13 +10,27 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
-    def create_user(self, id_external_user: int, role: str, usecase: str) -> User:
+    def create_user(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        id_external_company: int | None = None,
+    ) -> User:
         """Persist a new user with the supplied profile fields."""
         pass
 
     @abstractmethod
-    def update_role_and_usecase(self, id_external_user: int, role: str, usecase: str) -> None:
-        """Persist the role and usecase on the user matching an external identifier."""
+    def sync_sign_in_profile(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        id_external_company: int,
+    ) -> None:
+        """Persist role, usecase, and company id after OAuth Sign in."""
         pass
 
     @abstractmethod
@@ -51,8 +65,15 @@ class IService(ABC):
         pass
 
     @abstractmethod
-    def apply_sign_in_profile(self, id_external_user: int, role: str, usecase: str) -> User:
-        """Create the user or refresh role and usecase after each OAuth Sign in."""
+    def apply_sign_in_profile(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        ms_auth_profile: dict,
+    ) -> User:
+        """Create or refresh the user from ms-auth after each OAuth Sign in."""
         pass
 
     @abstractmethod

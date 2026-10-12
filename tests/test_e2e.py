@@ -9,6 +9,19 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+MS_AUTH_HEADERS = {"Authorization": "Bearer ms-access"}
+
+
+class AuthTestClient(TestClient):
+    """Test client that always sends the ms-auth Bearer token."""
+
+    def request(self, method, url, **kwargs):
+        """Attach the ms-auth Bearer token to every HTTP request."""
+        headers = dict(kwargs.pop("headers", None) or {})
+        headers.setdefault("Authorization", "Bearer ms-access")
+        kwargs["headers"] = headers
+        return super().request(method, url, **kwargs)
+
 from improvement_plan.entity import ImprovementPlan
 from improvement_plan.service import Service as ImprovementPlanService
 from internal.http import improvement_plan_handlers, session_handlers, user_handlers
@@ -184,7 +197,13 @@ class InMemoryImprovementPlanRepository:
 @pytest.fixture
 def seeded_repositories():
     """Create repositories populated with scenario fixtures."""
-    user = User(id="u1", id_external_user=12345, role="analyst", usecase="report_generation")
+    user = User(
+        id="u1",
+        id_external_user=12345,
+        role="analyst",
+        usecase="report_generation",
+        id_external_company=90,
+    )
     session = Session(id="s1", id_user="u1", name="Weekly emissions review", messages=[])
     message = Message(
         input="Summarize this session.",
@@ -216,13 +235,19 @@ def seeded_repositories():
 @pytest.fixture
 def live_app(api_main, seeded_repositories, monkeypatch):
     """Build the conversation test application with isolated dependencies."""
+    from tests.test_profile_api import PROFILE_PAYLOAD
+
     user_repository, session_repository = seeded_repositories
     app = api_main.app
     app.dependency_overrides[user_handlers.get_user_service] = lambda: UserService(user_repository)
     app.dependency_overrides[session_handlers.get_session_service] = lambda: SessionService(session_repository)
 
     monkeypatch.setattr(session_handlers, "UserRepository", lambda db: user_repository)
-    with TestClient(app) as client:
+    monkeypatch.setattr(
+        "cmd.api.acl.ms_auth_security.get_profile",
+        lambda token: {**PROFILE_PAYLOAD, "id": ID_EXTERNAL_USER},
+    )
+    with AuthTestClient(app) as client:
         yield client, api_main, user_repository, session_repository
     app.dependency_overrides.clear()
 
@@ -606,11 +631,17 @@ def test_lifespan_spawns_no_mcp_server_when_warm_up_is_switched_off(api_main, mo
 
 def test_lifespan_starts_even_when_an_mcp_server_refuses_to(api_main, monkeypatch, capsys):
     """Verify that lifespan starts even when an mcp server refuses to."""
+    from tests.test_profile_api import PROFILE_PAYLOAD
+
     session = FakeMCPSession("chroma", fails_with=RuntimeError("CHROMA_API_KEY is not set."))
     monkeypatch.setattr(api_main, "MCP_SESSIONS", (session,))
     monkeypatch.setattr(api_main, "MCP_WARM_UP", "true")
+    monkeypatch.setattr(
+        "cmd.api.acl.ms_auth_security.get_profile",
+        lambda token: {**PROFILE_PAYLOAD, "id": 12345},
+    )
 
-    with TestClient(api_main.app) as client:
+    with AuthTestClient(api_main.app) as client:
         assert client.get("/ai/user/12345").status_code in (200, 404, 503)
         assert printed_within(capsys, "CHROMA_API_KEY")
 
@@ -659,7 +690,7 @@ def test_journey_unknown_user_is_404(live_app):
     """Verify that journey unknown user is 404."""
     client, _, _, _ = live_app
 
-    assert client.get("/ai/user/99999").status_code == 404
+    assert client.get("/ai/user/99999").status_code == 403
     assert client.get("/ai/sessions/user/ghost").status_code == 404
 
 

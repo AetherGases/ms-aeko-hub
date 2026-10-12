@@ -389,17 +389,17 @@ async def lifespan(app: FastAPI):
         SessionCacheRepository(redis_client, scan_count=REDIS_SCAN_COUNT),
         inactivity_minutes=SESSION_INACTIVITY_MINUTES,
     )
+    user_service = UserService(UserRepository(db))
     configure_mongo_tools(
         improvement_plans=ImprovementPlanService(ImprovementPlanRepository(db)),
-        users=UserService(UserRepository(db)),
+        users=user_service,
         sessions=session_service,
     )
     configure_chroma_tools(
-        users=UserService(UserRepository(db)),
+        users=user_service,
         improvement_plans=ImprovementPlanService(ImprovementPlanRepository(db)),
     )
 
-    user_service = UserService(UserRepository(db))
     app.state.oauth = OAuthService(OAuthCodeRepository(redis_client), user_service)
 
     ticket_service = UploadTicketService(UploadTicketRepository(redis_client))
@@ -409,7 +409,7 @@ async def lifespan(app: FastAPI):
         plans=ImprovementPlanService(ImprovementPlanRepository(db)),
     )
     configure_ask_aeko(
-        a2a=A2AService(UserService(UserRepository(db)), session_service, UserRepository(db)),
+        a2a=A2AService(user_service, session_service, UserRepository(db)),
         aeko_messenger_factory=build_messenger,
         aeko_session_factory=build_session,
     )
@@ -461,7 +461,6 @@ app = FastAPI(
     ),
     openapi_tags=OPENAPI_TAGS,
 )
-
 
 app.add_middleware(RequestLogMiddleware)
 

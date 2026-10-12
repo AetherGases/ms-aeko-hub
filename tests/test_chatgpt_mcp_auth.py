@@ -42,6 +42,25 @@ def oauth_env(monkeypatch):
     monkeypatch.setenv("OAUTH_CLIENT_ID", "chatgpt")
     monkeypatch.setenv("OAUTH_AUTHORIZATION_CODE_TTL_SECONDS", "300")
     monkeypatch.setenv("OAUTH_ACCESS_TOKEN_TTL_SECONDS", "3600")
+    monkeypatch.setenv("AUTH_MS_BASE_URL", "http://auth.test")
+    monkeypatch.setenv("MS_HTTP_TIMEOUT", "30")
+
+
+@pytest.fixture(autouse=True)
+def stub_ms_auth_profile_resolution(monkeypatch):
+    """Resolve MCP Bearer tokens through a stub ms-auth profile."""
+    from cmd.api.integrations.profile_api import ProfileError
+    from tests.test_oauth import oauth_profile
+
+    def get_profile(token):
+        """Return a profile payload or reject unknown tokens."""
+        if token in {"not-a-jwt", "expired-token"}:
+            raise ProfileError("denied")
+        if token.startswith("user-"):
+            return oauth_profile(id=int(token.removeprefix("user-")))
+        return oauth_profile(id=12345)
+
+    monkeypatch.setattr("cmd.api.acl.ms_auth_security.get_profile", get_profile)
 
 
 def rpc(method, params=None, id=1):
@@ -256,9 +275,7 @@ def test_invalid_bearer_on_ask_aeko_does_not_run_domain_or_ms_auth(
 def test_expired_bearer_on_ask_aeko_does_not_run_domain_or_ms_auth(
     oauth_env, monkeypatch
 ):
-    """Verify that an expired Bearer still 401s without calling ask_aeko or ms-auth."""
-    from oauth.token import encode_access_token
-
+    """Verify that an invalid ms-auth Bearer still 401s without calling ask_aeko."""
     calls = []
 
     def fake_ask(*args, **kwargs):
@@ -267,16 +284,14 @@ def test_expired_bearer_on_ask_aeko_does_not_run_domain_or_ms_auth(
         return "should-not-run"
 
     def fake_login(*args, **kwargs):
-        """Fail if the MCP gate tries to authenticate through ms-auth."""
+        """Fail if the MCP gate tries to authenticate through ms-auth login."""
         raise AssertionError("ms-auth login must not be called")
 
-    token = encode_access_token(12345)
-    monkeypatch.setattr("oauth.token.time.time", lambda: 4_000_000_000)
     monkeypatch.setattr("cmd.api.tools.ask_aeko.ask_aeko", fake_ask)
     monkeypatch.setattr("cmd.api.integrations.auth_api.login", fake_login)
     monkeypatch.setattr("oauth.service.login", fake_login)
 
-    headers = {**MCP_HEADERS, "Authorization": f"Bearer {token}"}
+    headers = {**MCP_HEADERS, "Authorization": "Bearer expired-token"}
     with make_client() as client:
         response = post_mcp(
             client,
@@ -291,10 +306,9 @@ def test_expired_bearer_on_ask_aeko_does_not_run_domain_or_ms_auth(
 def test_valid_token_on_ask_aeko_binds_identity_and_is_not_unauthorized(
     oauth_env, monkeypatch
 ):
-    """Verify that a valid access token binds the ChatGPT user and does not 401."""
+    """Verify that a valid ms-auth token binds the ChatGPT user and does not 401."""
     from cmd.api.acl.open_ai.identity import current_id_external_user
     from cmd.api.tools import ask_aeko as ask_module
-    from oauth.token import encode_access_token
 
     seen = []
 
@@ -310,8 +324,7 @@ def test_valid_token_on_ask_aeko_binds_identity_and_is_not_unauthorized(
         return "ok"
 
     monkeypatch.setattr(ask_module, "ask_aeko", fake_ask)
-    token = encode_access_token(12345)
-    headers = {**MCP_HEADERS, "Authorization": f"Bearer {token}"}
+    headers = {**MCP_HEADERS, "Authorization": "Bearer ms-access"}
 
     with make_client() as client:
         initialized = post_mcp(client, initialize_body(), headers=headers)
@@ -354,9 +367,8 @@ def test_attach_id_external_user_keeps_non_dict_scope_state_attributes():
 
 
 def test_valid_token_without_local_user_is_not_unauthorized(oauth_env):
-    """Verify that a valid JWT for a missing local User is not 401 and surfaces not found."""
+    """Verify that a valid ms-auth token for a missing local User is not 401."""
     from cmd.api.tools import mongo_tools
-    from oauth.token import encode_access_token
 
     class Users:
         def get_mongo_user(self, identifier):
@@ -364,8 +376,7 @@ def test_valid_token_without_local_user_is_not_unauthorized(oauth_env):
             raise ValueError(f"User with id_external_user {identifier} not found.")
 
     mongo_tools.configure(users=Users())
-    token = encode_access_token(99999)
-    headers = {**MCP_HEADERS, "Authorization": f"Bearer {token}"}
+    headers = {**MCP_HEADERS, "Authorization": "Bearer user-99999"}
     try:
         with make_client() as client:
             initialized = post_mcp(client, initialize_body(), headers=headers)

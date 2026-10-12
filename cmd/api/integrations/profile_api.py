@@ -6,6 +6,18 @@ from cmd.api.integrations.ms_auth_http import base_url, request_json
 
 PROFILE_MS_PATH = "/api/profile"
 
+_TOOL_PROFILE_KEYS = (
+    "id",
+    "cpf",
+    "email",
+    "name",
+    "phone",
+    "image",
+    "permissions",
+    "enterprise",
+    "unit",
+)
+
 
 class ProfileError(RuntimeError):
     """Raised when a call to the auth microservice profile route cannot be completed."""
@@ -23,9 +35,32 @@ def get_profile(access_token: str) -> dict:
     )
 
 
+def profile_tool_catalog(ms_payload: dict, *, role: str, usecase: str) -> dict[str, Any]:
+    """Merge the ms-auth profile with ChatGPT-specific fields stored in Mongo."""
+
+    catalog = {key: ms_payload[key] for key in _TOOL_PROFILE_KEYS if key in ms_payload}
+    catalog["role"] = role
+    catalog["usecase"] = usecase
+    return catalog
+
+
 def profile_id(payload: dict) -> int:
     """Return the profile id as a positive integer for use as id_external_user."""
     return _positive_int(payload.get("id"), "id")
+
+
+def profile_enterprise_id(payload: dict) -> int:
+    """Return the enterprise id from a GetMyProfileOutput-shaped payload."""
+    enterprise = payload.get("enterprise")
+    if not isinstance(enterprise, dict):
+        raise ValueError("enterprise is required.")
+    return _positive_int(enterprise.get("id"), "enterprise.id")
+
+
+def sign_in_profile_sync(ms_auth_profile: dict) -> dict[str, Any]:
+    """Extract the company id persisted after OAuth Sign in."""
+
+    return {"id_external_company": profile_enterprise_id(ms_auth_profile)}
 
 
 def _positive_int(value: Any, field_name: str) -> int:

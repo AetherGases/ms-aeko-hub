@@ -654,8 +654,11 @@ def test_the_lifespan_registers_a_sink_and_takes_it_back_off(api_main):
 def test_the_sink_writes_what_the_sdk_reported_into_the_collection(api_main):
     """Verify that the sink writes what the sdk reported into the collection."""
     database = StubDatabase(aeko_metrics=StubCollection())
+    set_aeko_metrics_sink(api_main.build_aeko_metrics_sink(database))
 
-    api_main.build_aeko_metrics_sink(database)(build_sdk_metrics())
+    record_aeko_metrics(
+        build_sdk_metrics(), id_external_user=12345, id_external_company=90
+    )
 
     (document,) = database["aeko_metrics"].call_args("insert_one")[0]
     assert document["id_request"] == METRIC_DOCUMENT["id_request"]
@@ -663,8 +666,8 @@ def test_the_sink_writes_what_the_sdk_reported_into_the_collection(api_main):
     assert document["error_description"] is None
     assert document["flow"] == "conversational"
     assert document["cost_usd"] == 0.000015
-    assert document["id_external_user"] is None
-    assert document["id_external_company"] is None
+    assert document["id_external_user"] == 12345
+    assert document["id_external_company"] == 90
     assert isinstance(document["created_at"], datetime)
     assert document["used_agents"] == [AGENT_DOCUMENT]
 
@@ -672,9 +675,12 @@ def test_the_sink_writes_what_the_sdk_reported_into_the_collection(api_main):
 def test_the_sink_carries_a_failed_run_across(api_main):
     """Verify that the sink carries a failed run across."""
     database = StubDatabase(aeko_metrics=StubCollection())
+    set_aeko_metrics_sink(api_main.build_aeko_metrics_sink(database))
 
-    api_main.build_aeko_metrics_sink(database)(
-        build_sdk_metrics(error_description="MalformedAgentOutputError: no sections")
+    record_aeko_metrics(
+        build_sdk_metrics(error_description="MalformedAgentOutputError: no sections"),
+        id_external_user=12345,
+        id_external_company=90,
     )
 
     (document,) = database["aeko_metrics"].call_args("insert_one")[0]

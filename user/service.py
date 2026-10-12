@@ -1,5 +1,6 @@
 """Coordinate domain operations for users and memories."""
 
+from cmd.api.integrations.profile_api import sign_in_profile_sync
 from user.entity import User, UserMemory
 from user.user import IService
 
@@ -25,25 +26,58 @@ class Service(IService):
         except Exception as e:
             raise RuntimeError(f"Error retrieving user: {e}")
 
-    def get_mongo_user_or_create(self, id_external_user: int, role: str, usecase: str) -> User:
+    def get_mongo_user_or_create(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        id_external_company: int | None = None,
+    ) -> User:
         """Return the stored user or create one with the supplied profile fields."""
         try:
             return self.get_mongo_user(id_external_user)
         except ValueError:
             try:
-                return self.repository.create_user(id_external_user, role, usecase)
+                create_kwargs: dict = {}
+                if id_external_company is not None:
+                    create_kwargs["id_external_company"] = id_external_company
+                return self.repository.create_user(
+                    id_external_user,
+                    role,
+                    usecase,
+                    **create_kwargs,
+                )
             except Exception as e:
                 raise RuntimeError(f"Error creating user: {e}")
 
-    def apply_sign_in_profile(self, id_external_user: int, role: str, usecase: str) -> User:
-        """Create the user or refresh role and usecase after each OAuth Sign in."""
+    def apply_sign_in_profile(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        ms_auth_profile: dict,
+    ) -> User:
+        """Create or refresh the user from ms-auth after each OAuth Sign in."""
         role = _strip_required(role, "role")
         usecase = _strip_required(usecase, "usecase")
+        sync_fields = sign_in_profile_sync(ms_auth_profile)
         try:
-            self.repository.update_role_and_usecase(id_external_user, role, usecase)
+            self.repository.sync_sign_in_profile(
+                id_external_user,
+                role,
+                usecase,
+                id_external_company=sync_fields["id_external_company"],
+            )
             return self.get_mongo_user(id_external_user)
         except ValueError:
-            return self.get_mongo_user_or_create(id_external_user, role, usecase)
+            return self.repository.create_user(
+                id_external_user,
+                role,
+                usecase,
+                id_external_company=sync_fields["id_external_company"],
+            )
 
     def get_user_memories(self, id_user: str) -> list[UserMemory]:
         """Retrieve the memories stored for a user."""

@@ -3,13 +3,20 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+
+from internal.http.ms_auth_authorization import (
+    ensure_company,
+    ensure_internal_user,
+    ensure_session_belongs_to_principal,
+)
+from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from aeko_metrics.aeko_metrics import IService as IAekoMetricsService
 from aeko_metrics.database.repository import Repository as AekoMetricsRepository
 from aeko_metrics.service import Service as AekoMetricsService
-from session.database.repository import Repository
+from session.database.repository import Repository as SessionRepository
 from session.cache.repository import Repository as CacheRepository
 from session.service import Service
 from session.session import GuardrailRejectedError, IService
@@ -17,7 +24,7 @@ from session.session import GuardrailRejectedError, IService
 from cmd.memory_generator_worker.constants import REDIS_SCAN_COUNT, SESSION_INACTIVITY_MINUTES
 from user.database.repository import Repository as UserRepository
 
-router = APIRouter(tags=["Sessions"])
+router = APIRouter(tags=["Sessions"], dependencies=[Depends(require_ms_auth_principal)])
 
 class SessionResponseData(BaseModel):
     id: str = Field(..., description="Internal session identifier.", json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"})
@@ -57,10 +64,26 @@ def get_session_service(request: Request) -> IService:
     if redis is not None:
         cache_repository = CacheRepository(redis, scan_count=REDIS_SCAN_COUNT)
     return Service(
-        Repository(database),
+        SessionRepository(database),
         cache_repository,
         inactivity_minutes=SESSION_INACTIVITY_MINUTES,
     )
+
+
+def get_user_repository(request: Request) -> UserRepository:
+    """Build the user repository from the application database, or raise HTTP 503."""
+    database = request.app.state.db
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database is not initialized")
+    return UserRepository(database)
+
+
+def get_session_repository(request: Request) -> SessionRepository:
+    """Build the session repository from the application database, or raise HTTP 503."""
+    database = request.app.state.db
+    if database is None:
+        raise HTTPException(status_code=503, detail="Database is not initialized")
+    return SessionRepository(database)
 
 
 def get_aeko_metrics_service(request: Request) -> IAekoMetricsService:
@@ -98,11 +121,13 @@ def get_aeko_metrics_service(request: Request) -> IAekoMetricsService:
     },
 )
 def get_company_cost(
+    principal: MsAuth,
     n: int = Query(..., description="Number of trailing days to include.", examples=[7]),
     id_external_company: int = Query(..., description="External company identifier snapshotted on billed runs.", examples=[90]),
     service: IAekoMetricsService = Depends(get_aeko_metrics_service),
 ) -> CompanyCostResponseData:
     """Return USD spent by a company's users over the trailing n days."""
+    ensure_company(principal, id_external_company)
     try:
         result = service.company_cost(n, id_external_company)
         return CompanyCostResponseData(
@@ -147,10 +172,13 @@ def get_company_cost(
     },
 )
 def get_user_sessions(
+    principal: MsAuth,
     id_user: str = Path(..., description="Internal user identifier.", examples=["65a8b3d6c0f8e1d7f4b2c010"]),
     service: IService = Depends(get_session_service),
+    user_repository: UserRepository = Depends(get_user_repository),
 ) -> list[SessionResponseData]:
     """Retrieve the sessions belonging to a user."""
+    ensure_internal_user(principal, id_user, user_repository)
     try:
         sessions = service.get_user_sessions(id_user)
         return [SessionResponseData(id=session.id, name=session.name) for session in sessions]
@@ -185,10 +213,20 @@ def get_user_sessions(
     },
 )
 def get_session_messages(
+    principal: MsAuth,
     id_session: str = Path(..., description="Internal session identifier.", examples=["65a8b3d6c0f8e1d7f4b2c001"]),
     service: IService = Depends(get_session_service),
+    session_repository: SessionRepository = Depends(get_session_repository),
+    user_repository: UserRepository = Depends(get_user_repository),
 ) -> list[MessageResponseData]:
     """Retrieve the stored messages for a session."""
+    try:
+        session = session_repository.get_session(id_session)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error retrieving session messages: {exc}") from exc
+    ensure_session_belongs_to_principal(principal, session, user_repository)
     try:
         messages = service.get_session_messages(id_session)
         return [
@@ -264,7 +302,9 @@ def get_session_messages(
 )
 async def send_message(
     request: Request,
+    principal: MsAuth,
     service: IService = Depends(get_session_service),
+    user_repository: UserRepository = Depends(get_user_repository),
 ):
     """Send a conversation turn and persist the approved response with its run metrics."""
     body = await request.json()
@@ -277,6 +317,8 @@ async def send_message(
 
     if not aeko_messenger_factory or not aeko_session_factory:
         raise HTTPException(status_code=500, detail="Aeko SDK is not initialized")
+
+    ensure_internal_user(principal, id_user, user_repository)
 
     try:
         message = await run_in_threadpool(

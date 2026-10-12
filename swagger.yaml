@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Aether AI Gateway
   version: 1.0.0
-  description: 'HTTP API for user, session, and improvement plan report workflows in the Aether core gateway. Every response carries an X-Request-Id header: the identifier of that request in the hub_metrics base.'
+  description: 'HTTP API for user, session, and improvement plan report workflows in the Aether core gateway. Protected /ai routes require an ms-auth Bearer access token (login or ChatGPT OAuth exchange). Every response carries an X-Request-Id header: the identifier of that request in the hub_metrics base.'
 servers:
   - url: /
 tags:
@@ -20,6 +20,8 @@ paths:
       summary: Get user by external identifier
       description: Retrieves a user profile using the external user identifier stored in the core database.
       operationId: getUserByExternalId
+      security:
+        - MsAuthBearer: []
       parameters:
         - name: id_external_user
           in: path
@@ -39,6 +41,8 @@ paths:
                 id_external_user: 12345
                 role: analyst
                 usecase: report_generation
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: User not found.
           content:
@@ -70,6 +74,8 @@ paths:
       summary: Sum session and SDK cost for a company
       description: Returns USD spent in the last n days by runs that snapshotted the given company, grouped by external user.
       operationId: getCompanySessionCost
+      security:
+        - MsAuthBearer: []
       parameters:
         - name: n
           in: query
@@ -100,6 +106,8 @@ paths:
                     cost_usd: 0.25
                   - id_external_user: 2
                     cost_usd: 0.20
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           description: n or id_external_company is invalid.
           content:
@@ -131,6 +139,8 @@ paths:
       summary: List sessions for a user
       description: Returns all sessions associated with the internal user identifier.
       operationId: listUserSessions
+      security:
+        - MsAuthBearer: []
       parameters:
         - name: id_user
           in: path
@@ -151,6 +161,8 @@ paths:
               example:
                 - id: 65a8b3d6c0f8e1d7f4b2c001
                   name: Weekly emissions review
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: No sessions found for the given user.
           content:
@@ -182,6 +194,8 @@ paths:
       summary: List messages for a session
       description: Returns the message history stored for a specific session.
       operationId: listSessionMessages
+      security:
+        - MsAuthBearer: []
       parameters:
         - name: id_session
           in: path
@@ -203,6 +217,8 @@ paths:
                 - input_message: Summarize this session.
                   output_message: Here is the summary.
                   submitted_at: '2026-07-26T14:30:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           description: The session identifier is invalid or unavailable.
           content:
@@ -234,6 +250,8 @@ paths:
       summary: Send a message to the AI session
       description: Creates or continues a session message exchange, running the Aeko messenger for the asking user.
       operationId: sendSessionMessage
+      security:
+        - MsAuthBearer: []
       requestBody:
         required: true
         content:
@@ -255,6 +273,8 @@ paths:
                 input_message: Summarize this session.
                 output_message: Here is the summary.
                 submitted_at: '2026-07-26T14:30:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           description: The request body is missing required fields or is invalid.
           content:
@@ -286,6 +306,8 @@ paths:
       summary: Analyze an inventory and return the structured extraction
       description: Accepts inventory Markdown and the catalogs in force, runs them through the Aeko analyst flow with the current plan for that inventory as context, stores the new plan, and returns the structured inventory for Postgres persistence.
       operationId: analyzeInventoryReport
+      security:
+        - MsAuthBearer: []
       requestBody:
         required: true
         content:
@@ -326,6 +348,8 @@ paths:
                     category: null
                     is_upstream: null
                     is_reduction: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '400':
           description: The inventory Markdown is empty or a domain catalog rule was rejected.
           content:
@@ -373,6 +397,8 @@ paths:
       summary: Get the textual improvement plan for an inventory
       description: Returns the stored improvement plan for the external inventory identifier.
       operationId: getInventoryImprovementPlan
+      security:
+        - MsAuthBearer: []
       parameters:
         - name: id_external_inventory
           in: path
@@ -392,6 +418,8 @@ paths:
                 defined_problem: high scope 1 emissions
                 solving_method: replace the boiler fleet
                 reasoning: direct combustion dominates the inventory
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
           description: No improvement plan exists for the supplied inventory identifier.
           content:
@@ -417,6 +445,21 @@ paths:
               example:
                 detail: 'Error retrieving report: ...'
 components:
+  securitySchemes:
+    MsAuthBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: ms-auth access token from login or the ChatGPT OAuth exchange.
+  responses:
+    Unauthorized:
+      description: Missing or invalid ms-auth Bearer token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: Missing access token.
   schemas:
     ErrorResponse:
       type: object

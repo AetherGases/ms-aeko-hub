@@ -8,7 +8,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from internal.http import session_handlers
+from tests.ms_auth_doubles import ms_auth_principal, override_ms_auth
 from session.entity import Message, Session
+from user.entity import User
 from session.session import GuardrailRejectedError
 
 SESSIONS_ROUTE = "/ai/sessions/user/{id_user}"
@@ -55,22 +57,45 @@ class StubSessionService:
 
 
 class StubUserRepository:
-    """Stands in for the concrete repository the handler builds inline."""
+    """Return scripted users for authorization checks in route tests."""
 
-    def __init__(self, db):
-        self.db = db
+    def __init__(self, db=None, users_by_id=None):
+        default = User(id="u1", id_external_user=12345, role="analyst", usecase="chat")
+        self.users_by_id = users_by_id or {"u1": default}
+
+    def get_user_by_id(self, id_user):
+        return self.users_by_id.get(id_user)
 
 
-def build_client(service=None, db="fake-db", factories=True):
+class StubSessionRepository:
+    """Return scripted sessions for authorization checks in route tests."""
+
+    def __init__(self, sessions_by_id=None):
+        default = Session(id="s1", id_user="u1", name="Weekly emissions review", messages=[])
+        self.sessions_by_id = sessions_by_id or {"s1": default}
+
+    def get_session(self, id_session):
+        session = self.sessions_by_id.get(id_session)
+        if session is None:
+            raise ValueError(f"No session found with id_session {id_session}.")
+        return session
+
+
+def build_client(service=None, db="fake-db", factories=True, user_repository=None, session_repository=None):
     """Build a test client or client double with the supplied dependencies."""
     app = FastAPI()
     app.include_router(session_handlers.router)
     app.state.db = db
+    override_ms_auth(app)
     if factories:
         app.state._state["aeko_messenger_factory"] = MESSENGER_FACTORY
         app.state._state["aeko_session_factory"] = SESSION_FACTORY
     if service is not None:
         app.dependency_overrides[session_handlers.get_session_service] = lambda: service
+    user_repo = user_repository or StubUserRepository()
+    session_repo = session_repository or StubSessionRepository()
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: user_repo
+    app.dependency_overrides[session_handlers.get_session_repository] = lambda: session_repo
     return TestClient(app)
 
 
@@ -118,10 +143,18 @@ def test_get_user_sessions_returns_empty_list():
 def test_get_user_sessions_maps_value_error_to_404():
     """Verify that get user sessions maps value error to 404."""
     service = StubSessionService(error=ValueError("No sessions found."))
-    response = build_client(service).get(SESSIONS_ROUTE.format(id_user="ghost"))
+    response = build_client(service).get(SESSIONS_ROUTE.format(id_user="u1"))
 
     assert response.status_code == 404
     assert response.json()["detail"] == "No sessions found."
+
+
+def test_get_user_sessions_returns_404_when_internal_user_is_unknown():
+    """Verify that get user sessions returns 404 when the internal user does not exist."""
+    response = build_client(StubSessionService(result=[])).get(SESSIONS_ROUTE.format(id_user="ghost"))
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User not found."
 
 
 def test_get_user_sessions_maps_unexpected_error_to_500():
@@ -160,7 +193,14 @@ def test_get_session_messages_returns_messages():
 def test_get_session_messages_maps_value_error_to_400():
     """Verify that get session messages maps value error to 400."""
     service = StubSessionService(error=ValueError("Invalid session."))
-    response = build_client(service).get(MESSAGES_ROUTE.format(id_session="bad"))
+
+    class InvalidSessionRepository(StubSessionRepository):
+        def get_session(self, id_session):
+            raise ValueError("Invalid session.")
+
+    response = build_client(service, session_repository=InvalidSessionRepository()).get(
+        MESSAGES_ROUTE.format(id_session="bad")
+    )
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid session."
@@ -217,10 +257,10 @@ def test_send_message_defaults_missing_body_fields(patched_user_repository):
     """Verify that send message defaults missing body fields."""
     service = StubSessionService(result=make_message())
 
-    build_client(service).post(SEND_ROUTE, json={})
+    build_client(service).post(SEND_ROUTE, json={"id_user": "u1"})
 
     assert service.calls[0]["input"] == ""
-    assert service.calls[0]["id_user"] == ""
+    assert service.calls[0]["id_session"] is None
     assert service.calls[0]["id_session"] is None
 
 
@@ -299,11 +339,12 @@ class StubMetricsService:
         return self.result
 
 
-def build_cost_client(service=None, db="fake-db"):
+def build_cost_client(service=None, db="fake-db", id_external_company=90):
     """Build a client for the sessions cost route with a stub metrics service."""
     app = FastAPI()
     app.include_router(session_handlers.router)
     app.state.db = db
+    override_ms_auth(app, ms_auth_principal(id_external_company=id_external_company))
     if service is not None:
         app.dependency_overrides[session_handlers.get_aeko_metrics_service] = lambda: service
     return TestClient(app)
@@ -374,6 +415,45 @@ def test_the_sessions_cost_route_returns_503_when_database_is_not_initialized():
 def test_the_sessions_cost_route_is_registered_on_the_application(api_main):
     """Verify that the sessions cost route is registered on the application."""
     assert "get" in api_main.app.openapi()["paths"].get(COST_ROUTE, {})
+
+
+def test_the_sessions_cost_route_returns_403_for_another_company():
+    """Verify that company cost rejects a company that does not match the token."""
+    service = StubMetricsService()
+    response = build_cost_client(service, id_external_company=90).get(
+        COST_ROUTE, params={"n": 7, "id_external_company": 99}
+    )
+
+    assert response.status_code == 403
+    assert service.calls == []
+
+
+def test_get_session_messages_returns_403_when_session_belongs_to_another_user():
+    """Verify that session messages return 403 when the session owner does not match the token."""
+    other_user = User(id="other", id_external_user=99999, role="analyst", usecase="chat")
+    service = StubSessionService(result=[make_message()])
+    session_repo = StubSessionRepository(
+        sessions_by_id={"s1": Session(id="s1", id_user="other", name="n", messages=[])}
+    )
+    user_repo = StubUserRepository(users_by_id={"other": other_user})
+    response = build_client(service, user_repository=user_repo, session_repository=session_repo).get(
+        MESSAGES_ROUTE.format(id_session="s1")
+    )
+
+    assert response.status_code == 403
+    assert service.calls == []
+
+
+def test_session_routes_return_401_without_bearer_token():
+    """Verify that protected session routes return 401 when Bearer auth is missing."""
+    app = FastAPI()
+    app.include_router(session_handlers.router)
+    app.state.db = "fake-db"
+    client = TestClient(app)
+
+    assert client.get(SESSIONS_ROUTE.format(id_user="u1")).status_code == 401
+    assert client.get(MESSAGES_ROUTE.format(id_session="s1")).status_code == 401
+    assert client.get(COST_ROUTE, params={"n": 7, "id_external_company": 90}).status_code == 401
 
 
 def test_send_message_runs_the_blocking_sdk_call_off_the_event_loop(patched_user_repository):

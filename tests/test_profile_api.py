@@ -5,6 +5,17 @@ import json
 import pytest
 import requests
 
+PROFILE_ADDRESS = {
+    "id": 5,
+    "zipCode": "01310100",
+    "state": "SP",
+    "city": "Sao Paulo",
+    "neighborhood": "Bela Vista",
+    "street": "Av Paulista",
+    "number": 1000,
+    "complement": "10o andar",
+}
+
 PROFILE_PAYLOAD = {
     "id": 1,
     "cpf": "12345678901",
@@ -13,7 +24,20 @@ PROFILE_PAYLOAD = {
     "phone": "11999999999",
     "image": {"id": 10, "name": "profile.jpg", "path": "/images/profiles/profile.jpg"},
     "permissions": [],
-    "unit": {"id": 1, "cnae": "6201500"},
+    "enterprise": {
+        "id": 90,
+        "name": "Aether Industria SA",
+        "tradeName": "Aether",
+        "cnpj": "12345678000199",
+        "address": PROFILE_ADDRESS,
+    },
+    "unit": {
+        "id": 1,
+        "cnae": "6201500",
+        "cnpj": "12345678000199",
+        "isActive": True,
+        "address": PROFILE_ADDRESS,
+    },
 }
 
 
@@ -101,6 +125,33 @@ def test_profile_id_rejects_an_unusable_id(payload):
 
     with pytest.raises(ValueError):
         profile_id(payload)
+
+
+def test_profile_enterprise_id_reads_the_nested_enterprise_id():
+    """Verify that profile enterprise id reads enterprise.id from the ms-auth payload."""
+    from cmd.api.integrations.profile_api import profile_enterprise_id
+
+    assert profile_enterprise_id(PROFILE_PAYLOAD) == 90
+
+
+def test_sign_in_profile_sync_keeps_only_the_company_id():
+    """Verify that sign in profile sync keeps only the company id for Mongo."""
+
+    from cmd.api.integrations.profile_api import sign_in_profile_sync
+
+    assert sign_in_profile_sync(PROFILE_PAYLOAD) == {"id_external_company": 90}
+
+
+def test_profile_tool_catalog_merges_role_and_usecase():
+    """Verify that profile tool catalog merges role and usecase from Mongo."""
+
+    from cmd.api.integrations.profile_api import profile_tool_catalog
+
+    catalog = profile_tool_catalog(PROFILE_PAYLOAD, role="analyst", usecase="inventory")
+    assert catalog["id"] == 1
+    assert catalog["enterprise"] == PROFILE_PAYLOAD["enterprise"]
+    assert catalog["role"] == "analyst"
+    assert catalog["usecase"] == "inventory"
 
 
 @pytest.mark.parametrize("env_var", ["AUTH_MS_BASE_URL", "MS_HTTP_TIMEOUT"])

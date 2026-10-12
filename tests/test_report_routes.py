@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from improvement_plan.entity import ExtractedInventory, ImprovementPlan, InventoryEmission
 from improvement_plan.improvement_plan import MalformedPlanError
 from internal.http import improvement_plan_handlers
+from tests.ms_auth_doubles import override_ms_auth
 
 ROUTE = "/ai/report"
 GET_ROUTE = "/ai/report/{id_external_inventory}"
@@ -62,6 +63,7 @@ EXTRACTED_INVENTORY_JSON = {
 STORED_PLAN = ImprovementPlan(
     id="65a8b3d6c0f8e1d7f4b2c020",
     id_external_inventory=502,
+    id_external_company=90,
     defined_problem="high scope 1 emissions",
     method="replace the boiler fleet",
     reasoning="direct combustion dominates the inventory",
@@ -120,6 +122,7 @@ def build_client(service=None, db="fake-db", analyzer_factory=build_analyzer_fac
     app = FastAPI()
     app.include_router(improvement_plan_handlers.router)
     app.state.db = db
+    override_ms_auth(app)
     if analyzer_factory is not None:
         app.state.aeko_inventory_analyzer_factory = analyzer_factory
     if service is not None:
@@ -286,6 +289,28 @@ def test_an_unknown_category_classification_is_rejected(patched_user_service):
     response = build_client(StubReportService()).post(ROUTE, json=body)
 
     assert response.status_code == 422
+
+
+def test_input_report_returns_403_when_body_user_does_not_match_token(patched_user_service):
+    """Verify that input report returns 403 when the body user does not match the token."""
+    body = {**REPORT_BODY, "id_external_user": 99999}
+    response = build_client(StubReportService()).post(ROUTE, json=body)
+
+    assert response.status_code == 403
+
+
+def test_get_report_returns_403_when_plan_company_does_not_match_token(patched_user_service):
+    """Verify that get report returns 403 when the stored plan belongs to another company."""
+    plan = ImprovementPlan(
+        id_external_inventory=502,
+        id_external_company=99,
+        defined_problem="p",
+        method="m",
+        reasoning="r",
+    )
+    response = build_client(StubReportService(plan=plan)).get(GET_ROUTE.format(id_external_inventory=502))
+
+    assert response.status_code == 403
 
 
 def test_get_report_returns_the_textual_plan(patched_user_service):

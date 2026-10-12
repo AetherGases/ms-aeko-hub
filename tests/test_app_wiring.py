@@ -1,5 +1,6 @@
 """Verify app wiring behavior and error handling."""
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -15,10 +16,12 @@ from session.service import Service as SessionService
 from tests.conftest import FakeRedis
 from tests.mongo_doubles import StubCollection, StubDatabase
 from user.database.repository import Repository as UserRepository
+from tests.ms_auth_doubles import override_ms_auth
 from user.service import Service as UserService
 
 REPORT_ROUTE = "/ai/report"
 SEND_MESSAGE_ROUTE = "/ai/user/session/message"
+MS_AUTH_HEADERS = {"Authorization": "Bearer ms-access"}
 ID_SESSION = "65a8b3d6c0f8e1d7f4b2c001"
 ID_USER = "65a8b3d6c0f8e1d7f4b2c010"
 
@@ -27,6 +30,7 @@ USER_DOCUMENT = {
     "id_external_user": 12345,
     "role": "analyst",
     "usecase": "report_generation",
+    "id_external_company": 90,
 }
 
 SESSION_DOCUMENT = {
@@ -41,6 +45,17 @@ def request_with(db):
     return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(db=db)))
 
 
+@pytest.fixture(autouse=True)
+def stub_ms_auth_profile_for_full_app(monkeypatch):
+    """Stub ms-auth profile resolution when tests hit the full application."""
+    from tests.test_profile_api import PROFILE_PAYLOAD
+
+    monkeypatch.setattr(
+        "cmd.api.acl.ms_auth_security.get_profile",
+        lambda token: PROFILE_PAYLOAD,
+    )
+
+
 def test_mcp_sessions_are_chroma_only(api_main):
     """Verify that mcp sessions are chroma only."""
     assert [session.name for session in api_main.MCP_SESSIONS] == ["chroma"]
@@ -52,6 +67,17 @@ def test_report_route_is_registered_on_the_application(api_main):
 
     assert "post" in paths.get(REPORT_ROUTE, {})
     assert "get" in paths.get("/ai/report/{id_external_inventory}", {})
+
+
+def test_swagger_yaml_documents_ms_auth_bearer_on_protected_routes():
+    """Verify that swagger.yaml marks protected routes with MsAuthBearer security."""
+    swagger = (Path(__file__).resolve().parent.parent / "swagger.yaml").read_text(encoding="utf-8")
+    assert "securitySchemes:" in swagger
+    assert "MsAuthBearer:" in swagger
+    assert "scheme: bearer" in swagger
+    assert swagger.count("- MsAuthBearer: []") == 7
+    assert "operationId: getUserByExternalId" in swagger
+    assert "#/components/responses/Unauthorized" in swagger
 
 
 @pytest.mark.parametrize(
@@ -180,7 +206,7 @@ def test_chatgpt_mcp_session_manager_runs_inside_the_lifespan(api_main):
 def test_report_route_is_reachable(api_main):
     """Verify that report route is reachable."""
     with TestClient(api_main.app) as client:
-        response = client.post(REPORT_ROUTE, json={})
+        response = client.post(REPORT_ROUTE, json={}, headers=MS_AUTH_HEADERS)
 
     assert response.status_code != 404
 
@@ -188,7 +214,7 @@ def test_report_route_is_reachable(api_main):
 def test_report_route_still_validates_its_body(api_main):
     """Verify that report route still validates its body."""
     with TestClient(api_main.app) as client:
-        response = client.post(REPORT_ROUTE, json={"id_external_user": 12345})
+        response = client.post(REPORT_ROUTE, json={"id_external_user": 12345}, headers=MS_AUTH_HEADERS)
 
     assert response.status_code == 422
 
@@ -274,6 +300,8 @@ def build_client(router, database, api_main=None):
     app = FastAPI()
     app.include_router(router)
     app.state.db = database
+    app.state.redis = FakeRedis()
+    override_ms_auth(app)
     if api_main is not None:
         app.state._state["aeko_messenger_factory"] = api_main.build_messenger
         app.state._state["aeko_session_factory"] = api_main.build_session
@@ -291,7 +319,7 @@ def test_get_user_runs_through_the_concrete_repository():
         "id_external_user": 12345,
         "role": "analyst",
         "usecase": "report_generation",
-        "id_external_company": None,
+        "id_external_company": 90,
     }
 
 
@@ -306,7 +334,10 @@ def test_get_user_returns_404_when_the_document_does_not_exist():
 
 def test_get_user_sessions_runs_through_the_concrete_repository():
     """Verify that get user sessions runs through the concrete repository."""
-    database = StubDatabase(session=StubCollection(find_result=[SESSION_DOCUMENT]))
+    database = StubDatabase(
+        session=StubCollection(find_result=[SESSION_DOCUMENT]),
+        user=StubCollection(find_one_result=USER_DOCUMENT),
+    )
 
     response = build_client(session_handlers.router, database).get(f"/ai/sessions/user/{ID_USER}")
 
@@ -316,8 +347,14 @@ def test_get_user_sessions_runs_through_the_concrete_repository():
 
 def test_get_session_messages_runs_through_the_concrete_repository():
     """Verify that get session messages runs through the concrete repository."""
-    document = {"messages": [{"input": "hi", "output": "ho", "submitted_at": "2026-07-26T14:30:00"}]}
-    database = StubDatabase(session=StubCollection(find_one_result=document))
+    document = {
+        **SESSION_DOCUMENT,
+        "messages": [{"input": "hi", "output": "ho", "submitted_at": "2026-07-26T14:30:00"}],
+    }
+    database = StubDatabase(
+        user=StubCollection(find_one_result=USER_DOCUMENT),
+        session=StubCollection(find_one_results=[SESSION_DOCUMENT, document]),
+    )
 
     response = build_client(session_handlers.router, database).get(f"/ai/session/{ID_SESSION}/messages")
 

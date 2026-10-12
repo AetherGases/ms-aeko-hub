@@ -1,6 +1,9 @@
 """Expose HTTP endpoints for inventory upload ticket handshake."""
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
+
+from internal.http.ms_auth_authorization import ensure_external_user
+from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
 from pydantic import BaseModel, ConfigDict, Field
 
 from cmd.api.integrations.cloudinary_api import CloudinaryError
@@ -8,7 +11,7 @@ from upload_ticket.cache.repository import Repository
 from upload_ticket.service import Service
 from upload_ticket.upload_ticket import IService
 
-router = APIRouter(tags=["Inventory Upload"])
+router = APIRouter(tags=["Inventory Upload"], dependencies=[Depends(require_ms_auth_principal)])
 
 
 class CompleteRequest(BaseModel):
@@ -81,6 +84,7 @@ def _raise_for_value_error(exc: ValueError) -> None:
     },
 )
 def get_upload_signature(
+    principal: MsAuth,
     id_external_user: int = Path(
         ...,
         description="External user identifier.",
@@ -94,6 +98,7 @@ def get_upload_signature(
     service: IService = Depends(get_ticket_service),
 ) -> dict:
     """Return the Cloudinary upload signature for a ticket."""
+    ensure_external_user(principal, id_external_user)
     try:
         service.get(id_external_user, ticket)
         return service.signature_for(id_external_user, ticket)
@@ -135,6 +140,7 @@ def get_upload_signature(
     },
 )
 def complete_upload(
+    principal: MsAuth,
     body: CompleteRequest,
     id_external_user: int = Path(
         ...,
@@ -149,6 +155,7 @@ def complete_upload(
     service: IService = Depends(get_ticket_service),
 ) -> CompleteResponse:
     """Store the uploaded file path and mark the ticket as uploaded."""
+    ensure_external_user(principal, id_external_user)
     try:
         updated = service.confirm_path(id_external_user, ticket, body.path)
         return CompleteResponse(ticket=updated.ticket, state=updated.state)

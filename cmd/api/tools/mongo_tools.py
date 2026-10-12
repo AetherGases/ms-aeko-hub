@@ -249,18 +249,39 @@ def _list_latest_improvement_plans(id_external_user: int, n: int) -> list[dict[s
     return _newest_first(documents, "updated_at")[:limit]
 
 
+def _assert_profile_subject(id_external_user: int) -> None:
+    """Reject profile reads that do not match the bound OAuth subject."""
+
+    try:
+        from cmd.api.acl.open_ai.identity import current_id_external_user
+
+        bound = current_id_external_user()
+    except RuntimeError:
+        return
+    if bound != id_external_user:
+        raise ValueError("id_external_user does not match the OAuth token.")
+
+
 @logged(Module.TOOL, "get_user_profile_by_external_id")
 def _get_user_profile_by_external_id(id_external_user: int) -> dict[str, Any]:
-    """Return the public profile for an external user identifier."""
+    """Return the ms-auth profile merged with ChatGPT role and usecase."""
 
-    user = _require_user(id_external_user)
-    return _pick_keys(
-        {
-            "id_external_user": user.id_external_user,
-            "role": user.role,
-            "usecase": user.usecase,
-        },
-        ("id_external_user", "role", "usecase"),
+    from cmd.api.acl.open_ai.identity import current_ms_auth_profile
+    from cmd.api.integrations.profile_api import profile_id, profile_tool_catalog
+
+    identifier = _positive_int(id_external_user, "id_external_user")
+    _assert_profile_subject(identifier)
+    user = _require_user(identifier)
+    try:
+        ms_profile = current_ms_auth_profile()
+    except RuntimeError as exc:
+        raise ValueError("Sign in is required to read the user profile.") from exc
+    if profile_id(ms_profile) != identifier:
+        raise ValueError("id_external_user does not match the ms-auth profile.")
+    return profile_tool_catalog(
+        ms_profile,
+        role=user.role,
+        usecase=user.usecase,
     )
 
 

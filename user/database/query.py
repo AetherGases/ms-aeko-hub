@@ -14,13 +14,22 @@ def get_user_query_filter(id_external_user: int) -> dict:
         "id_external_user": id_external_user
     }
 
-def create_user_query(id_external_user: int, role: str, usecase: str) -> dict:
+def create_user_query(
+    id_external_user: int,
+    role: str,
+    usecase: str,
+    *,
+    id_external_company: int | None = None,
+) -> dict:
     """Build a new user document for MongoDB insertion."""
-    return {
+    document = {
         "id_external_user": id_external_user,
         "role": role,
         "usecase": usecase,
     }
+    if id_external_company is not None:
+        document["id_external_company"] = id_external_company
+    return document
 
 def get_user_query(id_user: str) -> tuple[dict, dict]:
     """Build the filter and projection for an internal user identifier."""
@@ -30,9 +39,21 @@ def set_id_external_company_query(id_user: str, id_external_company: int) -> tup
     """Build the filter and $set document for a user's company identifier."""
     return id_filter("_id", id_user), {"$set": {"id_external_company": id_external_company}}
 
-def update_role_and_usecase_query(id_external_user: int, role: str, usecase: str) -> tuple[dict, dict]:
-    """Build the filter and $set document for a user's role and usecase."""
-    return get_user_query_filter(id_external_user), {"$set": {"role": role, "usecase": usecase}}
+def sync_sign_in_profile_query(
+    id_external_user: int,
+    role: str,
+    usecase: str,
+    *,
+    id_external_company: int,
+) -> tuple[dict, dict]:
+    """Build the filter and $set document for an OAuth Sign in profile refresh."""
+    return get_user_query_filter(id_external_user), {
+        "$set": {
+            "role": role,
+            "usecase": usecase,
+            "id_external_company": id_external_company,
+        }
+    }
 
 def get_user_memories_query(id_user: str) -> dict:
     """Build the filter for memories belonging to a user."""
@@ -44,7 +65,8 @@ def get_user_profile_query(id_external_user: int) -> tuple[dict, dict]:
         "_id": 0,
         "id_external_user": 1,
         "role": 1,
-        "usecase": 1
+        "usecase": 1,
+        "id_external_company": 1,
     }
 
 def get_user_memory_fields_query(id_user: str) -> tuple[dict, dict]:

@@ -34,6 +34,20 @@ def s256(verifier: str) -> str:
 VERIFIER = "verifier-12345678901234567890123456789012"
 CHATGPT_REDIRECT = "https://chatgpt.com/connector_platform_oauth_redirect"
 CIMD_CLIENT_ID = "https://chatgpt.com/oauth/client.json"
+OAUTH_ENTERPRISE = {
+    "id": 90,
+    "name": "Aether Industria SA",
+    "tradeName": "Aether",
+    "cnpj": "12345678000199",
+}
+
+
+def oauth_profile(**overrides):
+    """Build a minimal ms-auth profile payload for OAuth tests."""
+
+    payload = {"id": 1, "enterprise": OAUTH_ENTERPRISE}
+    payload.update(overrides)
+    return payload
 
 
 @pytest.fixture
@@ -60,7 +74,7 @@ def stub_sign_in(monkeypatch, profile=None, profile_error=None):
         """Return or raise the scripted profile payload."""
         if profile_error is not None:
             raise profile_error
-        return profile if profile is not None else {"id": 1, "cargo": "analyst"}
+        return profile if profile is not None else oauth_profile()
 
     monkeypatch.setattr("oauth.service.get_profile", get_profile)
 
@@ -93,11 +107,11 @@ def authorize(
 
 
 def test_access_token_round_trips_the_profile_id(oauth_env):
-    """Verify that access token round trips the profile id."""
-    from oauth.token import decode_access_token, encode_access_token
+    """Verify that access token round trips user and company claims."""
+    from oauth.token import AccessTokenClaims, decode_access_token, encode_access_token
 
-    token = encode_access_token(1)
-    assert decode_access_token(token) == 1
+    token = encode_access_token(1, 90)
+    assert decode_access_token(token) == AccessTokenClaims(1, 90)
     assert token.count(".") == 2
 
 
@@ -106,7 +120,7 @@ def test_access_token_is_rejected_when_expired(oauth_env, monkeypatch):
     from oauth.token import decode_access_token, encode_access_token
 
     monkeypatch.setattr("oauth.token.time.time", lambda: 1_000_000)
-    token = encode_access_token(1)
+    token = encode_access_token(1, 90)
     monkeypatch.setattr("oauth.token.time.time", lambda: 1_000_000 + 3601)
     with pytest.raises(ValueError):
         decode_access_token(token)
@@ -133,7 +147,7 @@ def test_authorize_calls_auth_then_profile_and_does_not_return_ms_tokens(
     def get_profile(access_token):
         """Record a profile call and return a profile payload with extra fields."""
         order.append(("profile", access_token))
-        return {"id": 1, "cpf": "12345678901", "image": {"path": "/x"}}
+        return oauth_profile(cpf="12345678901", image={"path": "/x"})
 
     monkeypatch.setattr("oauth.service.login", login)
     monkeypatch.setattr("oauth.service.get_profile", get_profile)
@@ -162,25 +176,48 @@ def test_authorize_applies_sign_in_profile_after_authentication(monkeypatch, oau
     calls = []
 
     class Users:
-        def apply_sign_in_profile(self, id_external_user, role, usecase):
+        def apply_sign_in_profile(
+            self,
+            id_external_user,
+            role,
+            usecase,
+            *,
+            ms_auth_profile=None,
+        ):
             """Record the Sign in profile sync."""
-            calls.append(("apply_sign_in_profile", id_external_user, role, usecase))
+            calls.append(
+                (
+                    "apply_sign_in_profile",
+                    id_external_user,
+                    role,
+                    usecase,
+                    ms_auth_profile,
+                )
+            )
 
-    stub_sign_in(monkeypatch, profile={"id": 42})
+    stub_sign_in(monkeypatch, profile=oauth_profile(id=42))
     authorize(
         Service(InMemoryCodes(), Users()),
         usecase="Plano de melhorias",
         role_from_form="Especialista",
     )
 
-    assert calls == [("apply_sign_in_profile", 42, "Especialista", "Plano de melhorias")]
+    assert calls == [
+        (
+            "apply_sign_in_profile",
+            42,
+            "Especialista",
+            "Plano de melhorias",
+            oauth_profile(id=42),
+        ),
+    ]
 
 
 def test_authorize_skips_provisioning_when_users_service_is_not_configured(monkeypatch, oauth_env):
     """Verify that authorize still works when no Mongo users service is wired."""
     from oauth.service import Service
 
-    stub_sign_in(monkeypatch, profile={"id": 7})
+    stub_sign_in(monkeypatch, profile=oauth_profile(id=7))
     redirect = authorize(Service(InMemoryCodes()))
     assert "code=" in redirect
 
@@ -215,16 +252,15 @@ def test_authorize_does_not_call_profile_when_login_is_not_authenticated(
     assert called == []
 
 
-def test_exchange_returns_this_api_token_not_the_ms_access_token(monkeypatch, oauth_env):
-    """Verify that exchange returns this api token not the ms access token."""
+def test_exchange_returns_the_ms_auth_access_token(monkeypatch, oauth_env):
+    """Verify that exchange returns the ms-auth access token issued at Sign in."""
     from oauth.service import Service
-    from oauth.token import decode_access_token
 
     monkeypatch.setattr(
         "oauth.service.login",
         lambda email, password: {"authenticated": True, "accessToken": "ms-access"},
     )
-    monkeypatch.setattr("oauth.service.get_profile", lambda token: {"id": 7})
+    monkeypatch.setattr("oauth.service.get_profile", lambda token: oauth_profile(id=7))
     service = Service(InMemoryCodes())
     verifier = "verifier-12345678901234567890123456789012"
     location = service.authorize(
@@ -247,8 +283,41 @@ def test_exchange_returns_this_api_token_not_the_ms_access_token(monkeypatch, oa
     assert body["token_type"] == "Bearer"
     assert body["expires_in"] == 3600
     assert "refresh" not in body
-    assert body["access_token"] != "ms-access"
-    assert decode_access_token(body["access_token"]) == 7
+    assert body["access_token"] == "ms-access"
+
+
+def test_exchange_uses_expires_in_from_login_payload(monkeypatch, oauth_env):
+    """Verify that exchange forwards ms-auth expiresIn when login provides it."""
+    from oauth.service import Service
+
+    monkeypatch.setattr(
+        "oauth.service.login",
+        lambda email, password: {
+            "authenticated": True,
+            "accessToken": "ms-access",
+            "expiresIn": 1800,
+        },
+    )
+    monkeypatch.setattr("oauth.service.get_profile", lambda token: oauth_profile(id=7))
+    service = Service(InMemoryCodes())
+    verifier = "verifier-12345678901234567890123456789012"
+    location = service.authorize(
+        "caio@example.com",
+        "secret",
+        client_id="chatgpt",
+        redirect_uri="https://chatgpt.com/connector_platform_oauth_redirect",
+        state="s",
+        code_challenge=s256(verifier),
+        code_challenge_method="S256",
+    )
+    code = parse_qs(urlparse(location).query)["code"][0]
+    body = service.exchange(
+        code,
+        client_id="chatgpt",
+        redirect_uri="https://chatgpt.com/connector_platform_oauth_redirect",
+        code_verifier=verifier,
+    )
+    assert body["expires_in"] == 1800
 
 
 def test_authorize_redirect_includes_issuer_and_state(monkeypatch, oauth_env):
@@ -268,7 +337,10 @@ def test_authorize_persists_only_oauth_code_fields(monkeypatch, oauth_env):
     """Verify that the stored authorization code keeps only OAuth fields and the profile id."""
     from oauth.service import Service
 
-    stub_sign_in(monkeypatch, profile={"id": 1, "cpf": "12345678901", "email": "caio@example.com"})
+    stub_sign_in(
+        monkeypatch,
+        profile=oauth_profile(id=1, cpf="12345678901", email="caio@example.com"),
+    )
     codes = InMemoryCodes()
     location = authorize(Service(codes))
     code = parse_qs(urlparse(location).query)["code"][0]
@@ -276,6 +348,8 @@ def test_authorize_persists_only_oauth_code_fields(monkeypatch, oauth_env):
     document = codes.pop(code)
     assert document == {
         "id_external_user": 1,
+        "id_external_company": 90,
+        "ms_auth_access_token": "ms-access",
         "client_id": "chatgpt",
         "redirect_uri": CHATGPT_REDIRECT,
         "code_challenge": s256(VERIFIER),
@@ -389,12 +463,11 @@ def test_exchange_rejects_reused_authorization_code(monkeypatch, oauth_env):
 
 
 def test_exchange_accepts_resource_equal_to_audience(monkeypatch, oauth_env):
-    """Verify that exchange copies a matching resource into the access token audience."""
+    """Verify that exchange still returns the ms-auth token when resource matches the audience."""
     from oauth.constants import OAUTH_AUDIENCE
     from oauth.service import Service
-    from oauth.token import decode_access_token
 
-    stub_sign_in(monkeypatch, profile={"id": 7})
+    stub_sign_in(monkeypatch, profile=oauth_profile(id=7))
     service = Service(InMemoryCodes())
     location = authorize(service, resource=OAUTH_AUDIENCE)
     code = parse_qs(urlparse(location).query)["code"][0]
@@ -405,7 +478,7 @@ def test_exchange_accepts_resource_equal_to_audience(monkeypatch, oauth_env):
         code_verifier=VERIFIER,
         resource=OAUTH_AUDIENCE,
     )
-    assert decode_access_token(body["access_token"]) == 7
+    assert body["access_token"] == "ms-access"
 
 
 def test_exchange_rejects_resource_that_is_not_the_audience(monkeypatch, oauth_env):

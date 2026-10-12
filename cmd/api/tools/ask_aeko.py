@@ -30,14 +30,30 @@ def configure(
     _aeko_session_factory = aeko_session_factory
 
 
+def _assert_token_company(company_id: int) -> None:
+    """Ensure the company id matches the OAuth access token when MCP identity is bound."""
+
+    try:
+        from cmd.api.acl.open_ai.identity import current_id_external_company
+
+        token_company = current_id_external_company()
+    except RuntimeError:
+        return
+    if company_id != token_company:
+        raise ValueError("id_external_company does not match the OAuth token.")
+
+
 def ask_aeko(
     id_external_user: int,
+    id_external_company: int,
     input: str,
     session_name: str | None = None,
 ) -> str:
     """Send a user question to Aeko and return the approved reply."""
 
     identifier = _positive_int(id_external_user, "id_external_user")
+    company_id = _positive_int(id_external_company, "id_external_company")
+    _assert_token_company(company_id)
     message_input = _required_text(input, "input")
     effective_session_name = (
         None

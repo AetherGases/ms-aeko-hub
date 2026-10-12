@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from cmd.api.integrations.cloudinary_api import CloudinaryError
 from internal.http import upload_ticket_handlers
+from tests.ms_auth_doubles import override_ms_auth
 from upload_ticket.entity import STATE_UPLOADED, UploadTicket
 
 SIGNATURE_ROUTE = (
@@ -99,6 +100,7 @@ def build_client(service=None, redis="fake-redis"):
     app = FastAPI()
     app.include_router(upload_ticket_handlers.router)
     app.state.redis = redis
+    override_ms_auth(app)
     if service is not None:
         app.dependency_overrides[upload_ticket_handlers.get_ticket_service] = lambda: service
     return TestClient(app)
@@ -149,8 +151,8 @@ def test_get_signature_returns_cloudinary_fields():
     ]
 
 
-def test_get_signature_for_another_user_returns_404_without_calling_signature_for():
-    """Verify that get signature for another user returns 404 without calling signature_for."""
+def test_get_signature_for_another_user_returns_403_without_calling_signature_for():
+    """Verify that get signature for another user returns 403 without calling signature_for."""
     service = StubUploadTicketService(
         get_error=ValueError("Upload ticket not found.")
     )
@@ -158,8 +160,8 @@ def test_get_signature_for_another_user_returns_404_without_calling_signature_fo
         SIGNATURE_ROUTE.format(id_external_user=OTHER_USER_ID, ticket=TICKET_ID)
     )
 
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Upload ticket not found."
+    assert response.status_code == 403
+    assert "id_external_user" in response.json()["detail"]
     assert service.signature_calls == []
 
 

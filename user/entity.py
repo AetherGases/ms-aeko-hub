@@ -10,7 +10,14 @@ class User:
     usecase: str
     id_external_company: int | None
 
-    def __init__(self, id: str, id_external_user: int, role: str, usecase: str, id_external_company: int | None = None):
+    def __init__(
+        self,
+        id: str,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        id_external_company: int | None = None,
+    ):
         self.id = id
         self.id_external_user = id_external_user
         self.role = role

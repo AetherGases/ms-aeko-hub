@@ -4,10 +4,12 @@ import pytest
 from langchain_core.tools import Tool
 
 from cmd.api.integrations.a2a.entity import A2AMessage, A2A_RECIPIENT_AEKO, A2A_SENDER_CHATGPT
-from cmd.api.integrations.a2a.service import Service
 from cmd.api.tools import ask_aeko as ask_aeko_tools
 from cmd.api.tools import constants as tool_constants
 from session.session import GuardrailRejectedError
+
+
+COMPANY_ID = 90
 
 
 class StubA2A:
@@ -50,7 +52,7 @@ def test_ask_aeko_sends_message_and_returns_reply(configured_tool):
 
     a2a, messenger_factory, session_factory = configured_tool
 
-    result = ask_aeko_tools.ask_aeko(12345, "Hello Aeko")
+    result = ask_aeko_tools.ask_aeko(12345, COMPANY_ID, "Hello Aeko")
 
     assert result == "Aeko response"
     assert len(a2a.calls) == 1
@@ -71,7 +73,19 @@ def test_ask_aeko_rejects_invalid_user_before_send(configured_tool, bad):
     a2a, _, _ = configured_tool
 
     with pytest.raises(ValueError, match="id_external_user"):
-        ask_aeko_tools.ask_aeko(bad, "Hello Aeko")
+        ask_aeko_tools.ask_aeko(bad, COMPANY_ID, "Hello Aeko")
+
+    assert a2a.calls == []
+
+
+@pytest.mark.parametrize("bad", [True, False, 0, -1, None])
+def test_ask_aeko_rejects_invalid_company_before_send(configured_tool, bad):
+    """Reject bool and non-positive company identifiers without sending."""
+
+    a2a, _, _ = configured_tool
+
+    with pytest.raises(ValueError, match="id_external_company"):
+        ask_aeko_tools.ask_aeko(12345, bad, "Hello Aeko")
 
     assert a2a.calls == []
 
@@ -83,7 +97,21 @@ def test_ask_aeko_rejects_empty_input_before_send(configured_tool, bad):
     a2a, _, _ = configured_tool
 
     with pytest.raises(ValueError, match="input"):
-        ask_aeko_tools.ask_aeko(12345, bad)
+        ask_aeko_tools.ask_aeko(12345, COMPANY_ID, bad)
+
+    assert a2a.calls == []
+
+
+def test_ask_aeko_rejects_a_company_that_does_not_match_the_token(configured_tool, monkeypatch):
+    """Reject a company id that does not match the OAuth token."""
+
+    a2a, _, _ = configured_tool
+    import cmd.api.acl.open_ai.identity as identity
+
+    monkeypatch.setattr(identity, "current_id_external_company", lambda: 90)
+
+    with pytest.raises(ValueError, match="OAuth token"):
+        ask_aeko_tools.ask_aeko(12345, 91, "Hello Aeko")
 
     assert a2a.calls == []
 
@@ -95,6 +123,7 @@ def test_ask_aeko_forwards_named_session(configured_tool):
 
     ask_aeko_tools.ask_aeko(
         12345,
+        COMPANY_ID,
         "Hello Aeko",
         session_name="Weekly emissions review",
     )
@@ -110,6 +139,7 @@ def test_ask_aeko_omits_missing_or_blank_session(configured_tool, session_name):
 
     ask_aeko_tools.ask_aeko(
         12345,
+        COMPANY_ID,
         "Hello Aeko",
         session_name=session_name,
     )
@@ -125,7 +155,7 @@ def test_ask_aeko_propagates_guardrail_rejection(configured_tool):
     a2a.error = rejection
 
     with pytest.raises(GuardrailRejectedError) as raised:
-        ask_aeko_tools.ask_aeko(12345, "Hello Aeko")
+        ask_aeko_tools.ask_aeko(12345, COMPANY_ID, "Hello Aeko")
 
     assert raised.value is rejection
 
@@ -149,7 +179,7 @@ def test_ask_aeko_raises_when_dependencies_are_unconfigured():
     for configured in dependencies:
         ask_aeko_tools.configure(**configured)
         with pytest.raises(RuntimeError):
-            ask_aeko_tools.ask_aeko(12345, "Hello Aeko")
+            ask_aeko_tools.ask_aeko(12345, COMPANY_ID, "Hello Aeko")
 
     assert a2a.calls == []
     ask_aeko_tools.configure()
@@ -165,5 +195,10 @@ def test_get_ask_aeko_tools_exposes_typed_tool(configured_tool):
     assert isinstance(tool, Tool)
     assert tool.name == "ask_aeko"
     assert tool.description == tool_constants.ASK_AEKO_DESCRIPTION
-    assert set(tool.args) == {"id_external_user", "input", "session_name"}
+    assert set(tool.args) == {
+        "id_external_user",
+        "id_external_company",
+        "input",
+        "session_name",
+    }
     assert "session_name" not in tool.args_schema.model_json_schema()["required"]

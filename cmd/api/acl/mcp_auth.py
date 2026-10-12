@@ -3,13 +3,20 @@
 import json
 
 from cmd.api.acl.open_ai.catalog import AUTHENTICATED_CHATGPT_TOOL_NAMES
+from cmd.api.acl.ms_auth_security import resolve_ms_auth_access_token
 from cmd.api.acl.open_ai.identity import (
+    attach_id_external_company,
     attach_id_external_user,
+    bind_id_external_company,
     bind_id_external_user,
+    bind_ms_auth_access_token,
+    bind_ms_auth_profile,
+    reset_id_external_company,
     reset_id_external_user,
+    reset_ms_auth_access_token,
+    reset_ms_auth_profile,
 )
 from oauth.discovery import mcp_protected_resource_metadata_url
-from oauth.token import decode_access_token
 
 ERROR_DESCRIPTION = "You need to login to continue"
 
@@ -54,17 +61,24 @@ class _McpAuthApp:
         try:
             if token is None:
                 raise ValueError("Missing access token.")
-            id_external_user = decode_access_token(token)
+            principal = resolve_ms_auth_access_token(token)
         except ValueError:
             await _send_unauthorized(send, None if payload is None else payload.get("id"))
             return
 
-        attach_id_external_user(scope, id_external_user)
-        identity = bind_id_external_user(id_external_user)
+        attach_id_external_user(scope, principal.id_external_user)
+        attach_id_external_company(scope, principal.id_external_company)
+        identity = bind_id_external_user(principal.id_external_user)
+        company = bind_id_external_company(principal.id_external_company)
+        access = bind_ms_auth_access_token(principal.access_token)
+        profile = bind_ms_auth_profile(principal.profile)
         try:
             await self.app(scope, replay, send)
         finally:
+            reset_ms_auth_profile(profile)
+            reset_ms_auth_access_token(access)
             reset_id_external_user(identity)
+            reset_id_external_company(company)
 
 
 def _requires_chatgpt_identity(payload) -> bool:

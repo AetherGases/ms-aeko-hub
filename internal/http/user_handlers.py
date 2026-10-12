@@ -3,11 +3,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from user.database.repository import Repository
-from user.service import Service
+from internal.http.ms_auth_authorization import ensure_external_user
+from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
+from user.database.repository import Repository as UserRepository
+from user.service import Service as UserService
 from user.user import IService
 
-router = APIRouter(tags=["Users"])
+router = APIRouter(tags=["Users"], dependencies=[Depends(require_ms_auth_principal)])
 
 class UserResponseData(BaseModel):
     id_external_user: int = Field(..., description="External identifier of the user.", json_schema_extra={"example": 12345})
@@ -23,7 +25,7 @@ def get_user_service(request: Request) -> IService:
     database = request.app.state.db
     if database is None:
         raise HTTPException(status_code=503, detail="Database is not initialized")
-    return Service(Repository(database))
+    return UserService(UserRepository(database))
 
 
 @router.get(
@@ -51,10 +53,12 @@ def get_user_service(request: Request) -> IService:
     },
 )
 def get_user(
+    principal: MsAuth,
     id_external_user: int = Path(..., description="External user identifier.", examples=[12345]),
     service: IService = Depends(get_user_service),
 ) -> UserResponseData:
     """Retrieve a user by external identifier."""
+    ensure_external_user(principal, id_external_user)
     try:
         user = service.get_mongo_user(id_external_user)
         return UserResponseData(
