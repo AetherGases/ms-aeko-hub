@@ -1,10 +1,12 @@
 """Expose HTTP endpoints and response models for improvement plans."""
 
+import hmac
+import os
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request
 
-from internal.http.ms_auth_authorization import ensure_company, ensure_external_user, ensure_plan_belongs_to_principal
+from internal.http.ms_auth_authorization import ensure_plan_belongs_to_principal
 from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -18,9 +20,27 @@ from improvement_plan.service import Service
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
 
-router = APIRouter(tags=["Reports"], dependencies=[Depends(require_ms_auth_principal)])
+router = APIRouter(tags=["Reports"])
+
+INTERNAL_AUTHENTICATION_KEY_ENV = "INTERNAL_AUTHENTICATION_KEY"
 
 CategoryClassification = Literal["UPSTREAM", "DOWNSTREAM"]
+
+
+def require_inventory_report_authentication_key(
+    authentication_key: str | None = Header(None, alias="authentication-key"),
+) -> None:
+    """Reject requests whose authentication-key header does not match the configured secret."""
+    expected = os.environ.get(INTERNAL_AUTHENTICATION_KEY_ENV, "")
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Inventory report authentication is not configured.",
+        )
+    if authentication_key is None:
+        raise HTTPException(status_code=401, detail="Missing authentication key.")
+    if not hmac.compare_digest(authentication_key, expected):
+        raise HTTPException(status_code=401, detail="Invalid authentication key.")
 
 
 class CatalogItemData(BaseModel):
@@ -149,6 +169,7 @@ def _http_status_for_value_error(exc: ValueError) -> int:
         "analyst flow with the current plan for that inventory as context, stores the new "
         "plan, and returns the structured inventory for Postgres persistence."
     ),
+    dependencies=[Depends(require_inventory_report_authentication_key)],
     responses={
         200: {
             "description": "Structured inventory extracted from the analysis.",
@@ -183,7 +204,6 @@ def _http_status_for_value_error(exc: ValueError) -> int:
 )
 async def input_report(
     request: Request,
-    principal: MsAuth,
     body: ReportRequestData,
     service: IService = Depends(get_improvement_plan_service),
 ) -> ExtractedInventoryData:
@@ -192,9 +212,6 @@ async def input_report(
 
     if not aeko_inventory_analyzer_factory:
         raise HTTPException(status_code=500, detail="Aeko SDK is not initialized")
-
-    ensure_external_user(principal, body.id_external_user)
-    ensure_company(principal, body.id_external_company)
 
     try:
         inventory = await run_in_threadpool(
@@ -223,6 +240,7 @@ async def input_report(
     response_model=ImprovementPlanReportData,
     summary="Get the textual improvement plan for an inventory",
     description="Returns the stored improvement plan for the external inventory identifier.",
+    dependencies=[Depends(require_ms_auth_principal)],
     responses={
         200: {
             "description": "Textual improvement plan found.",

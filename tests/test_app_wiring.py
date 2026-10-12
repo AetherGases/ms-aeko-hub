@@ -22,6 +22,7 @@ from user.service import Service as UserService
 REPORT_ROUTE = "/ai/report"
 SEND_MESSAGE_ROUTE = "/ai/user/session/message"
 MS_AUTH_HEADERS = {"Authorization": "Bearer ms-access"}
+INVENTORY_REPORT_AUTH_HEADERS = {"authentication-key": "test-inventory-report-key"}
 ID_SESSION = "65a8b3d6c0f8e1d7f4b2c001"
 ID_USER = "65a8b3d6c0f8e1d7f4b2c010"
 
@@ -75,7 +76,7 @@ def test_swagger_yaml_documents_ms_auth_bearer_on_protected_routes():
     assert "securitySchemes:" in swagger
     assert "MsAuthBearer:" in swagger
     assert "scheme: bearer" in swagger
-    assert swagger.count("- MsAuthBearer: []") == 7
+    assert swagger.count("- MsAuthBearer: []") == 6
     assert "operationId: getUserByExternalId" in swagger
     assert "#/components/responses/Unauthorized" in swagger
 
@@ -206,7 +207,7 @@ def test_chatgpt_mcp_session_manager_runs_inside_the_lifespan(api_main):
 def test_report_route_is_reachable(api_main):
     """Verify that report route is reachable."""
     with TestClient(api_main.app) as client:
-        response = client.post(REPORT_ROUTE, json={}, headers=MS_AUTH_HEADERS)
+        response = client.post(REPORT_ROUTE, json={}, headers=INVENTORY_REPORT_AUTH_HEADERS)
 
     assert response.status_code != 404
 
@@ -214,7 +215,11 @@ def test_report_route_is_reachable(api_main):
 def test_report_route_still_validates_its_body(api_main):
     """Verify that report route still validates its body."""
     with TestClient(api_main.app) as client:
-        response = client.post(REPORT_ROUTE, json={"id_external_user": 12345}, headers=MS_AUTH_HEADERS)
+        response = client.post(
+            REPORT_ROUTE,
+            json={"id_external_user": 12345},
+            headers=INVENTORY_REPORT_AUTH_HEADERS,
+        )
 
     assert response.status_code == 422
 

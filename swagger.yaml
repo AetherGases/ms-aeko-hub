@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Aether AI Gateway
   version: 1.0.0
-  description: 'HTTP API for user, session, and improvement plan report workflows in the Aether core gateway. Protected /ai routes require an ms-auth Bearer access token (login or ChatGPT OAuth exchange). Every response carries an X-Request-Id header: the identifier of that request in the hub_metrics base.'
+  description: 'HTTP API for user, session, and improvement plan report workflows in the Aether core gateway. Most /ai routes require an ms-auth Bearer access token; POST /ai/report expects the internal authentication-key header. Every response carries an X-Request-Id header: the identifier of that request in the hub_metrics base.'
 servers:
   - url: /
 tags:
@@ -307,7 +307,7 @@ paths:
       description: Accepts inventory Markdown and the catalogs in force, runs them through the Aeko analyst flow with the current plan for that inventory as context, stores the new plan, and returns the structured inventory for Postgres persistence.
       operationId: analyzeInventoryReport
       security:
-        - MsAuthBearer: []
+        - InventoryReportAuthenticationKey: []
       requestBody:
         required: true
         content:
@@ -349,7 +349,18 @@ paths:
                     is_upstream: null
                     is_reduction: false
         '401':
-          $ref: '#/components/responses/Unauthorized'
+          description: Missing or invalid authentication-key header.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing:
+                  value:
+                    detail: Missing authentication key.
+                invalid:
+                  value:
+                    detail: Invalid authentication key.
         '400':
           description: The inventory Markdown is empty or a domain catalog rule was rejected.
           content:
@@ -451,6 +462,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: ms-auth access token from login or the ChatGPT OAuth exchange.
+    InventoryReportAuthenticationKey:
+      type: apiKey
+      in: header
+      name: authentication-key
+      description: Shared secret for internal service authentication (INTERNAL_AUTHENTICATION_KEY).
   responses:
     Unauthorized:
       description: Missing or invalid ms-auth Bearer token.

@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 MS_AUTH_HEADERS = {"Authorization": "Bearer ms-access"}
+INVENTORY_REPORT_AUTH_HEADERS = {"authentication-key": "test-inventory-report-key"}
 
 
 class AuthTestClient(TestClient):
@@ -271,7 +272,7 @@ def report_app(live_app, monkeypatch):
 
 def request_report(client, body=None):
     """Submit a report request to the test application."""
-    return client.post("/ai/report", json=body or REPORT_BODY)
+    return client.post("/ai/report", json=body or REPORT_BODY, headers=INVENTORY_REPORT_AUTH_HEADERS)
 
 
 def get_report(client, id_external_inventory=ID_INVENTORY):
@@ -956,13 +957,13 @@ def test_an_empty_inventory_is_400_and_does_not_call_aeko(report_app, fake_sdk):
     assert fake_sdk.AekoInventoryAnalyzer.instances == []
 
 
-def test_an_unknown_user_is_403_and_stores_nothing(report_app):
-    """Verify that a report for another external user is rejected before analysis."""
+def test_an_unknown_user_is_404_and_stores_nothing(report_app):
+    """Verify that an unknown user is 404 and stores nothing."""
     client, _, plan_repository = report_app
 
     response = request_report(client, {**REPORT_BODY, "id_external_user": 99999})
 
-    assert response.status_code == 403
+    assert response.status_code == 404
     assert plan_repository.plans == []
 
 

@@ -11,6 +11,7 @@ from tests.ms_auth_doubles import override_ms_auth
 
 ROUTE = "/ai/report"
 GET_ROUTE = "/ai/report/{id_external_inventory}"
+INVENTORY_REPORT_AUTH_HEADERS = {"authentication-key": "test-inventory-report-key"}
 
 INVENTORY_MARKDOWN = "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
 
@@ -21,8 +22,16 @@ REPORT_BODY = {
     "id_external_company": 90,
     "gases": [{"id": 1, "name": "CO2"}],
     "scopes": [{"id": 1, "name": "Escopo 1"}],
-    "categories": [{"id": 1, "name": "Combustão estacionária", "classification": None}],
+    "categories": [{"id": 1, "name": "Combustão estacionária", "classification": None}    ],
 }
+
+
+def post_report(client, body=None, **kwargs):
+    """POST /ai/report with the internal authentication-key header."""
+    headers = dict(kwargs.pop("headers", {}))
+    headers.setdefault("authentication-key", INVENTORY_REPORT_AUTH_HEADERS["authentication-key"])
+    return client.post(ROUTE, json=body if body is not None else REPORT_BODY, headers=headers, **kwargs)
+
 
 EXTRACTED_INVENTORY = ExtractedInventory(
     description="Boiler-dominated inventory",
@@ -132,7 +141,7 @@ def build_client(service=None, db="fake-db", analyzer_factory=build_analyzer_fac
 
 def test_input_report_returns_the_structured_inventory(patched_user_service):
     """Verify that input report returns the structured inventory."""
-    response = build_client(StubReportService()).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(StubReportService()), REPORT_BODY)
 
     assert response.status_code == 200
     assert response.json() == EXTRACTED_INVENTORY_JSON
@@ -143,7 +152,7 @@ def test_input_report_forwards_what_the_flow_needs(patched_user_service):
     """Verify that input report forwards what the flow needs."""
     service = StubReportService()
 
-    build_client(service).post(ROUTE, json=REPORT_BODY)
+    post_report(build_client(service), REPORT_BODY)
 
     args, _kwargs = service.calls[0]
     (
@@ -170,7 +179,7 @@ def test_input_report_maps_value_error_to_400(patched_user_service):
     """Verify that input report maps value error to 400."""
     service = StubReportService(error=ValueError("inventory is required to analyze an inventory."))
 
-    response = build_client(service).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(service), REPORT_BODY)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "inventory is required to analyze an inventory."
@@ -180,7 +189,7 @@ def test_input_report_maps_a_missing_user_to_404(patched_user_service):
     """Verify that input report maps a missing user to 404."""
     service = StubReportService(error=ValueError("User with id_external_user 12345 not found."))
 
-    response = build_client(service).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(service), REPORT_BODY)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "User with id_external_user 12345 not found."
@@ -192,7 +201,7 @@ def test_input_report_maps_a_plan_that_never_took_shape_to_502(patched_user_serv
         error=MalformedPlanError("The analysis produced no plan in the shape a report is stored in.")
     )
 
-    response = build_client(service).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(service), REPORT_BODY)
 
     assert response.status_code == 502
     assert response.json()["detail"] == (
@@ -204,7 +213,7 @@ def test_input_report_maps_unexpected_error_to_500(patched_user_service):
     """Verify that input report maps unexpected error to 500."""
     service = StubReportService(error=RuntimeError("analyzer down"))
 
-    response = build_client(service).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(service), REPORT_BODY)
 
     assert response.status_code == 500
     assert "analyzer down" in response.json()["detail"]
@@ -212,7 +221,7 @@ def test_input_report_maps_unexpected_error_to_500(patched_user_service):
 
 def test_input_report_returns_503_when_database_is_not_initialized():
     """Verify that input report returns 503 when database is not initialized."""
-    response = build_client(service=None, db=None).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(service=None, db=None), REPORT_BODY)
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Database is not initialized"
@@ -220,7 +229,7 @@ def test_input_report_returns_503_when_database_is_not_initialized():
 
 def test_input_report_returns_500_when_the_sdk_was_never_configured(patched_user_service):
     """Verify that input report returns 500 when the sdk was never configured."""
-    response = build_client(StubReportService(), analyzer_factory=None).post(ROUTE, json=REPORT_BODY)
+    response = post_report(build_client(StubReportService(), analyzer_factory=None), REPORT_BODY)
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Aeko SDK is not initialized"
@@ -242,7 +251,7 @@ def test_input_report_requires_every_body_field(missing, patched_user_service):
     """Verify that input report requires every body field."""
     body = {key: value for key, value in REPORT_BODY.items() if key != missing}
 
-    response = build_client(StubReportService()).post(ROUTE, json=body)
+    response = post_report(build_client(StubReportService()), body)
 
     assert response.status_code == 422
 
@@ -252,15 +261,16 @@ def test_the_external_identifiers_must_be_numbers(field, patched_user_service):
     """Verify that the external identifiers must be numbers."""
     body = {**REPORT_BODY, field: "not-a-number"}
 
-    response = build_client(StubReportService()).post(ROUTE, json=body)
+    response = post_report(build_client(StubReportService()), body)
 
     assert response.status_code == 422
 
 
 def test_query_parameters_are_not_the_report_contract(patched_user_service):
     """Verify that query parameters are not the report contract."""
-    response = build_client(StubReportService()).post(
-        ROUTE,
+    response = post_report(
+        build_client(StubReportService()),
+        body={},
         params={"id_external_inventory": 502, "id_external_unit": 77, "id_user": "u1"},
     )
 
@@ -274,7 +284,7 @@ def test_duplicate_catalog_ids_are_rejected(patched_user_service):
         "gases": [{"id": 1, "name": "CO2"}, {"id": 1, "name": "CH4"}],
     }
 
-    response = build_client(StubReportService()).post(ROUTE, json=body)
+    response = post_report(build_client(StubReportService()), body)
 
     assert response.status_code == 422
 
@@ -286,17 +296,31 @@ def test_an_unknown_category_classification_is_rejected(patched_user_service):
         "categories": [{"id": 1, "name": "Purchased goods", "classification": "SIDEWAYS"}],
     }
 
-    response = build_client(StubReportService()).post(ROUTE, json=body)
+    response = post_report(build_client(StubReportService()), body)
 
     assert response.status_code == 422
 
 
-def test_input_report_returns_403_when_body_user_does_not_match_token(patched_user_service):
-    """Verify that input report returns 403 when the body user does not match the token."""
-    body = {**REPORT_BODY, "id_external_user": 99999}
-    response = build_client(StubReportService()).post(ROUTE, json=body)
+def test_input_report_returns_401_without_authentication_key(patched_user_service):
+    """Verify that inventory analysis returns 401 when the authentication-key header is missing."""
+    client = build_client(StubReportService())
+    response = client.post(ROUTE, json=REPORT_BODY, headers={})
 
-    assert response.status_code == 403
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Missing authentication key."
+
+
+def test_input_report_returns_401_for_invalid_authentication_key(patched_user_service):
+    """Verify that inventory analysis returns 401 when the authentication-key header is wrong."""
+    client = build_client(StubReportService())
+    response = client.post(
+        ROUTE,
+        json=REPORT_BODY,
+        headers={"authentication-key": "wrong-key"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid authentication key."
 
 
 def test_get_report_returns_403_when_plan_company_does_not_match_token(patched_user_service):
