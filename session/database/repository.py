@@ -1,5 +1,7 @@
 """Persist and retrieve conversations and messages through MongoDB."""
 
+from datetime import datetime
+
 from internal.shared import Module, logged
 from session.database import query as q
 from session.entity import Message, Session
@@ -116,10 +118,13 @@ class Repository(IRepository):
 
 def message_from_data(data: dict) -> Message:
     """Map a stored message document to a domain message."""
+    submitted_at = data["submitted_at"]
+    if isinstance(submitted_at, str):
+        submitted_at = datetime.fromisoformat(submitted_at.replace("Z", "+00:00"))
     return Message(
         input=data["input"],
         output=data["output"],
-        submitted_at=data["submitted_at"]
+        submitted_at=submitted_at,
     )
 
 

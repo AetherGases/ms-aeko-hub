@@ -241,6 +241,7 @@ def test_metric_from_sdk_run_with_bound_company():
     stored = []
 
     def sink(metrics):
+        """Capture the persisted metric produced from an SDK run."""
         stored.append(metric_from_sdk_run(metrics))
 
     set_aeko_metrics_sink(sink)

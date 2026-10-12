@@ -350,6 +350,7 @@ def test_authorize_persists_only_oauth_code_fields(monkeypatch, oauth_env):
         "id_external_user": 1,
         "id_external_company": 90,
         "ms_auth_access_token": "ms-access",
+        "ms_auth_access_token_expires_in": 3600,
         "client_id": "chatgpt",
         "redirect_uri": CHATGPT_REDIRECT,
         "code_challenge": s256(VERIFIER),

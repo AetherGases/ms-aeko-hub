@@ -64,6 +64,7 @@ class StubUserRepository:
         self.users_by_id = users_by_id or {"u1": default}
 
     def get_user_by_id(self, id_user):
+        """Return the scripted user for an internal id, or None when unknown."""
         return self.users_by_id.get(id_user)
 
 
@@ -75,6 +76,7 @@ class StubSessionRepository:
         self.sessions_by_id = sessions_by_id or {"s1": default}
 
     def get_session(self, id_session):
+        """Return the scripted session or raise when the id is unknown."""
         session = self.sessions_by_id.get(id_session)
         if session is None:
             raise ValueError(f"No session found with id_session {id_session}.")
@@ -196,6 +198,7 @@ def test_get_session_messages_maps_value_error_to_400():
 
     class InvalidSessionRepository(StubSessionRepository):
         def get_session(self, id_session):
+            """Raise the scripted validation error for authorization tests."""
             raise ValueError("Invalid session.")
 
     response = build_client(service, session_repository=InvalidSessionRepository()).get(
@@ -461,6 +464,7 @@ def test_send_message_runs_the_blocking_sdk_call_off_the_event_loop(patched_user
 
     class LoopAwareService(StubSessionService):
         def __init__(self):
+            """Initialize the service double that records which thread ran send_message."""
             super().__init__(result=make_message())
             self.ran_on_the_event_loop = None
 

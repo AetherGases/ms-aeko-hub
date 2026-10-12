@@ -107,14 +107,16 @@ def _normalize_metrics_endpoint(endpoint: str) -> str:
 
 
 def configure(metric_reader=None) -> None:
-    """Install the process-wide meter provider, optionally exporting OTLP metrics."""
+    """Install the process-wide meter provider, optionally exporting OTLP metrics.
+
+    Defaults OTLP metric temporality to DELTA because Dynatrace OTLP rejects cumulative counters.
+    """
     global _meter, _provider, _hub_requests, _hub_latency, _aeko_runs, _aeko_latency, _aeko_cost
     global _aeko_agent_invocations, _aeko_tool_invocations
 
     if _provider is not None:
         return
 
-    # Dynatrace OTLP drops cumulative counters/histograms; Python SDK defaults to cumulative.
     os.environ.setdefault("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", "DELTA")
 
     service_name = os.getenv("OTEL_SERVICE_NAME", "").strip() or os.getenv("APP_NAME", "aeko-hub")

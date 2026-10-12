@@ -241,6 +241,8 @@ def live_app(api_main, seeded_repositories, monkeypatch):
     app = api_main.app
     app.dependency_overrides[user_handlers.get_user_service] = lambda: UserService(user_repository)
     app.dependency_overrides[session_handlers.get_session_service] = lambda: SessionService(session_repository)
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: user_repository
+    app.dependency_overrides[session_handlers.get_session_repository] = lambda: session_repository
 
     monkeypatch.setattr(session_handlers, "UserRepository", lambda db: user_repository)
     monkeypatch.setattr(
@@ -864,6 +866,7 @@ def test_a_failed_reanalysis_keeps_the_current_plan(report_app, fake_sdk):
     existing = ImprovementPlan(
         id="p1",
         id_external_inventory=ID_INVENTORY,
+        id_external_company=90,
         defined_problem="old problem",
         method="old method",
         reasoning="old reasoning",
@@ -953,13 +956,13 @@ def test_an_empty_inventory_is_400_and_does_not_call_aeko(report_app, fake_sdk):
     assert fake_sdk.AekoInventoryAnalyzer.instances == []
 
 
-def test_an_unknown_user_is_404_and_stores_nothing(report_app):
-    """Verify that an unknown user is 404 and stores nothing."""
+def test_an_unknown_user_is_403_and_stores_nothing(report_app):
+    """Verify that a report for another external user is rejected before analysis."""
     client, _, plan_repository = report_app
 
     response = request_report(client, {**REPORT_BODY, "id_external_user": 99999})
 
-    assert response.status_code == 404
+    assert response.status_code == 403
     assert plan_repository.plans == []
 
 

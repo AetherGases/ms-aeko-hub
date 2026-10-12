@@ -17,12 +17,14 @@ from internal.observability.telemetry import (
 
 
 def test_latency_ms_parses_milliseconds_and_rejects_invalid_values():
+    """Verify that hub latency strings are parsed and invalid values become zero."""
     assert _latency_ms("10.5ms") == 10.5
     assert _latency_ms("not-a-number-ms") == 0.0
     assert _latency_ms("5s") == 0.0
 
 
 def test_parse_headers_skips_malformed_segments():
+    """Verify that malformed OTLP header segments are ignored."""
     assert _parse_headers("Authorization=Bearer x, bad, key=value") == {
         "Authorization": "Bearer x",
         "key": "value",
@@ -30,24 +32,28 @@ def test_parse_headers_skips_malformed_segments():
 
 
 def test_dynatrace_authorization_preserves_existing_scheme():
+    """Verify that existing Authorization schemes are preserved for Dynatrace OTLP."""
     assert _dynatrace_authorization("Bearer tok") == "Bearer tok"
     assert _dynatrace_authorization("api-token tok") == "api-token tok"
     assert _dynatrace_authorization("") == ""
 
 
 def test_otlp_auth_headers_prefers_explicit_headers(monkeypatch):
+    """Verify that OTEL_EXPORTER_OTLP_HEADERS overrides the platform token."""
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "Authorization=Bearer explicit")
     monkeypatch.setenv("DT_PLATFORM_TOKEN", "ignored")
     assert _otlp_auth_headers() == {"Authorization": "Bearer explicit"}
 
 
 def test_otlp_auth_headers_returns_none_when_headers_parse_empty(monkeypatch):
+    """Verify that empty OTLP header parsing yields no auth headers."""
     monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "not-a-header")
     monkeypatch.delenv("DT_PLATFORM_TOKEN", raising=False)
     assert _otlp_auth_headers() is None
 
 
 def test_normalize_metrics_endpoint_appends_metrics_suffix_for_otlp_base():
+    """Verify that Dynatrace OTLP base URLs gain the metrics path suffix."""
     assert _normalize_metrics_endpoint("https://dt.example/api/v2/otlp") == (
         "https://dt.example/api/v2/otlp/v1/metrics"
     )
@@ -63,6 +69,7 @@ def test_platform_token_uses_bearer_authorization():
 
 
 def test_configure_is_idempotent_when_already_configured(monkeypatch):
+    """Verify that configure does not replace an existing meter provider."""
     telemetry.shutdown()
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     try:
@@ -75,6 +82,7 @@ def test_configure_is_idempotent_when_already_configured(monkeypatch):
 
 
 def test_configure_accepts_an_injected_metric_reader(monkeypatch):
+    """Verify that configure wires an injected in-memory metric reader."""
     from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
     telemetry.shutdown()
@@ -87,6 +95,7 @@ def test_configure_accepts_an_injected_metric_reader(monkeypatch):
 
 
 def test_configure_builds_otlp_exporter_when_endpoint_is_set(monkeypatch):
+    """Verify that configure builds an OTLP exporter when an endpoint is configured."""
     telemetry.shutdown()
     captured = []
 
@@ -98,6 +107,7 @@ def test_configure_builds_otlp_exporter_when_endpoint_is_set(monkeypatch):
             captured.append((endpoint, headers, preferred_temporality))
 
         def shutdown(self, *args, **kwargs):
+            """No-op shutdown hook for the OTLP exporter test double."""
             return None
 
     monkeypatch.setattr(telemetry, "OTLPMetricExporter", FakeExporter)
@@ -114,12 +124,14 @@ def test_configure_builds_otlp_exporter_when_endpoint_is_set(monkeypatch):
 
 
 def test_otlp_auth_headers_returns_none_without_token_or_headers(monkeypatch):
+    """Verify that OTLP auth headers are omitted when no token or headers are set."""
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_HEADERS", raising=False)
     monkeypatch.delenv("DT_PLATFORM_TOKEN", raising=False)
     assert _otlp_auth_headers() is None
 
 
 def test_normalize_metrics_endpoint_returns_custom_urls_unchanged():
+    """Verify that non-Dynatrace collector URLs are left unchanged."""
     assert _normalize_metrics_endpoint("https://collector.example/otlp") == (
         "https://collector.example/otlp"
     )
@@ -277,6 +289,7 @@ def test_record_aeko_run_exports_agent_and_tool_invocations():
 
 
 def test_record_aeko_run_is_a_no_op_before_configure():
+    """Verify that SDK run recording is skipped until OpenTelemetry is configured."""
     telemetry.record_aeko_run(
         AekoMetric(id_request="req-0", latency=1, flow="conversational", used_agents=[])
     )

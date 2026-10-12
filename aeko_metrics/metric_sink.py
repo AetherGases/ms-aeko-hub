@@ -13,6 +13,7 @@ from internal.shared.event_tracking import (
 
 
 def agents_from_sdk(metrics) -> list[AgentMetric]:
+    """Map SDK agent usage rows onto persisted aeko_metrics agent entities."""
     return [
         AgentMetric(
             name=agent.name,
