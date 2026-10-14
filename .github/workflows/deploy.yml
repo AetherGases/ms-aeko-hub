@@ -1,0 +1,29 @@
+# Deploys this repository to Amazon EKS using the organization's shared workflow.
+# All the logic lives in AetherGases/.github → .github/workflows/deploy-eks.yml.
+#
+# Runs only when a release is published by hand (any branch or tag).
+# Defaults: ECR repository, Deployment and container are named after this repo.
+# To override one, add a repository variable (Settings → Secrets and variables
+# → Actions → Variables): ECR_REPOSITORY, K8S_DEPLOYMENT, CONTAINER_NAME,
+# K8S_NAMESPACE, CONTAINER_PORT, SERVICE_TYPE.
+
+name: Deploy to Amazon EKS
+
+on:
+  release:
+    types: [ published ]
+
+# The shared workflow can only use permissions granted here.
+permissions:
+  contents: read
+  checks: read
+
+# Never run two deploys of this repo at the same time.
+concurrency:
+  group: deploy-eks
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: AetherGases/.github/.github/workflows/deploy-eks.yml@main
+    secrets: inherit
