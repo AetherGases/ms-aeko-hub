@@ -15,6 +15,7 @@ from pymongo import MongoClient
 from redis import Redis
 
 from cmd.api.integrations.a2a.service import Service as A2AService
+from cmd.api.acl.mcp_auth import configure as configure_mcp_auth
 from cmd.api.acl.mcp_auth import wrap_mcp_auth
 from cmd.api.acl.open_ai.server import build_mcp_server
 from cmd.api.integrations.climatiq_api import get_climatiq_tools
@@ -409,6 +410,7 @@ async def lifespan(app: FastAPI):
         users=user_service,
         sessions=OAuthSessionRepository(redis_client),
     )
+    configure_mcp_auth(sessions=OAuthSessionRepository(redis_client))
 
     ticket_service = UploadTicketService(UploadTicketRepository(redis_client))
     configure_inventory_tools(

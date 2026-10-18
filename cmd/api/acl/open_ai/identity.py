@@ -8,6 +8,8 @@ _ms_auth_access_token: ContextVar[str | None] = ContextVar("ms_auth_access_token
 _ms_auth_profile: ContextVar[dict | None] = ContextVar("ms_auth_profile", default=None)
 _SCOPE_STATE_KEY = "chatgpt_id_external_user"
 _SCOPE_STATE_COMPANY_KEY = "chatgpt_id_external_company"
+_SCOPE_STATE_MS_AUTH_PROFILE_KEY = "chatgpt_ms_auth_profile"
+_SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY = "chatgpt_ms_auth_access_token"
 
 
 def bind_id_external_user(id_external_user: int):
@@ -55,6 +57,9 @@ def current_ms_auth_access_token() -> str:
     value = _ms_auth_access_token.get()
     if value is not None:
         return value
+    attached = _ms_auth_access_token_from_mcp_request()
+    if attached is not None:
+        return attached
     raise RuntimeError("ms-auth access token is not bound.")
 
 
@@ -63,6 +68,9 @@ def current_ms_auth_profile() -> dict:
     value = _ms_auth_profile.get()
     if value is not None:
         return value
+    attached = _ms_auth_profile_from_mcp_request()
+    if attached is not None:
+        return attached
     raise RuntimeError("ms-auth profile is not bound.")
 
 
@@ -88,6 +96,31 @@ def attach_id_external_company(scope, id_external_company: int) -> None:
         scope["state"] = {_SCOPE_STATE_COMPANY_KEY: id_external_company}
         return
     setattr(state, _SCOPE_STATE_COMPANY_KEY, id_external_company)
+
+
+def attach_ms_auth_profile(scope, profile: dict) -> None:
+    """Store the ms-auth profile on the ASGI scope for the MCP session."""
+    state = scope.get("state")
+    if isinstance(state, dict):
+        state[_SCOPE_STATE_MS_AUTH_PROFILE_KEY] = profile
+        return
+    if state is None:
+        scope["state"] = {_SCOPE_STATE_MS_AUTH_PROFILE_KEY: profile}
+        return
+    setattr(state, _SCOPE_STATE_MS_AUTH_PROFILE_KEY, profile)
+
+
+def attach_ms_auth_access_token(scope, access_token: str) -> None:
+    """Store the ms-auth access token on the ASGI scope for the MCP session."""
+    state = scope.get("state")
+    if isinstance(state, dict):
+        state[_SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY] = access_token
+        return
+    if state is None:
+        scope["state"] = {_SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY: access_token}
+        return
+    setattr(state, _SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY, access_token)
+
 
 def current_id_external_user() -> int:
     """Return the bound ChatGPT user identifier."""
@@ -133,3 +166,27 @@ def _id_external_company_from_mcp_request() -> int | None:
     state = getattr(request, "state", None)
     value = getattr(state, _SCOPE_STATE_COMPANY_KEY, None)
     return value if isinstance(value, int) else None
+
+
+def _ms_auth_profile_from_mcp_request() -> dict | None:
+    try:
+        from mcp.server.lowlevel.server import request_ctx
+
+        request = request_ctx.get().request
+    except LookupError:
+        return None
+    state = getattr(request, "state", None)
+    value = getattr(state, _SCOPE_STATE_MS_AUTH_PROFILE_KEY, None)
+    return value if isinstance(value, dict) else None
+
+
+def _ms_auth_access_token_from_mcp_request() -> str | None:
+    try:
+        from mcp.server.lowlevel.server import request_ctx
+
+        request = request_ctx.get().request
+    except LookupError:
+        return None
+    state = getattr(request, "state", None)
+    value = getattr(state, _SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY, None)
+    return value if isinstance(value, str) and value else None

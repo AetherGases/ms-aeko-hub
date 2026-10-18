@@ -7,6 +7,8 @@ from cmd.api.acl.ms_auth_security import resolve_ms_auth_access_token
 from cmd.api.acl.open_ai.identity import (
     attach_id_external_company,
     attach_id_external_user,
+    attach_ms_auth_access_token,
+    attach_ms_auth_profile,
     bind_id_external_company,
     bind_id_external_user,
     bind_ms_auth_access_token,
@@ -17,8 +19,17 @@ from cmd.api.acl.open_ai.identity import (
     reset_ms_auth_profile,
 )
 from oauth.discovery import mcp_protected_resource_metadata_url
+from oauth.token import decode_access_token
 
 ERROR_DESCRIPTION = "You need to login to continue"
+
+_sessions = None
+
+
+def configure(*, sessions=None) -> None:
+    """Wire the OAuth hub-token session repository used by the MCP auth gate."""
+    global _sessions
+    _sessions = sessions
 
 
 def www_authenticate_value() -> str:
@@ -61,13 +72,23 @@ class _McpAuthApp:
         try:
             if token is None:
                 raise ValueError("Missing access token.")
-            principal = resolve_ms_auth_access_token(token)
+            claims = decode_access_token(token)
+            if _sessions is None:
+                raise ValueError("Missing hub session.")
+            document = _sessions.get(token)
+            if not document:
+                raise ValueError("Missing hub session.")
+            principal = resolve_ms_auth_access_token(document["ms_auth_access_token"])
+            if principal.id_external_user != claims.id_external_user:
+                raise ValueError("Hub session identity mismatch.")
         except ValueError:
             await _send_unauthorized(send, None if payload is None else payload.get("id"))
             return
 
         attach_id_external_user(scope, principal.id_external_user)
         attach_id_external_company(scope, principal.id_external_company)
+        attach_ms_auth_profile(scope, principal.profile)
+        attach_ms_auth_access_token(scope, principal.access_token)
         identity = bind_id_external_user(principal.id_external_user)
         company = bind_id_external_company(principal.id_external_company)
         access = bind_ms_auth_access_token(principal.access_token)

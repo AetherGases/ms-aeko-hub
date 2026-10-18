@@ -109,6 +109,27 @@ def www_authenticate_list(body):
     return None
 
 
+def hub_bearer(id_external_user=12345, id_external_company=90, ms_auth_access_token="ms-access", sessions=None):
+    """Return Authorization headers for a hub JWT with a stored ms-auth session."""
+    from cmd.api.acl import mcp_auth
+    from oauth.token import encode_access_token
+    from tests.test_oauth import InMemorySessions
+
+    token = encode_access_token(id_external_user, id_external_company)
+    store = sessions if sessions is not None else InMemorySessions()
+    store.save(
+        token,
+        {
+            "ms_auth_access_token": ms_auth_access_token,
+            "id_external_user": id_external_user,
+            "id_external_company": id_external_company,
+        },
+        3600,
+    )
+    mcp_auth.configure(sessions=store)
+    return {**MCP_HEADERS, "Authorization": f"Bearer {token}"}, store
+
+
 def make_client():
     """Build an isolated FastAPI app that only serves the wrapped ChatGPT MCP."""
     from cmd.api.acl.mcp_auth import wrap_mcp_auth
@@ -324,7 +345,7 @@ def test_valid_token_on_ask_aeko_binds_identity_and_is_not_unauthorized(
         return "ok"
 
     monkeypatch.setattr(ask_module, "ask_aeko", fake_ask)
-    headers = {**MCP_HEADERS, "Authorization": "Bearer ms-access"}
+    headers, _store = hub_bearer()
 
     with make_client() as client:
         initialized = post_mcp(client, initialize_body(), headers=headers)
@@ -348,6 +369,28 @@ def test_valid_token_on_ask_aeko_binds_identity_and_is_not_unauthorized(
     assert seen[0]["id_external_user"] == 12345 or seen[0]["bound"] == 12345
 
 
+def test_ms_auth_jwt_on_ask_aeko_is_unauthorized(oauth_env, monkeypatch):
+    """Verify that a raw ms-auth Bearer is not accepted as the ChatGPT MCP token."""
+    headers = {**MCP_HEADERS, "Authorization": "Bearer ms-access"}
+    with make_client() as client:
+        response = post_mcp(client, call_tool("ask_aeko", {"input": "hi"}), headers=headers)
+    assert_unauthorized_challenge(response)
+
+
+def test_hub_jwt_without_session_is_unauthorized(oauth_env):
+    """Verify that a valid hub JWT with no Redis session still 401s."""
+    from oauth.token import encode_access_token
+    from cmd.api.acl import mcp_auth
+    from tests.test_oauth import InMemorySessions
+
+    mcp_auth.configure(sessions=InMemorySessions())
+    token = encode_access_token(12345, 90)
+    headers = {**MCP_HEADERS, "Authorization": f"Bearer {token}"}
+    with make_client() as client:
+        response = post_mcp(client, call_tool("ask_aeko", {"input": "hi"}), headers=headers)
+    assert_unauthorized_challenge(response)
+
+
 def test_attach_id_external_user_keeps_non_dict_scope_state_attributes():
     """Verify that attach writes identity without replacing a non-dict scope state."""
     from cmd.api.acl.open_ai.identity import attach_id_external_user
@@ -366,6 +409,43 @@ def test_attach_id_external_user_keeps_non_dict_scope_state_attributes():
     assert state.chatgpt_id_external_user == 12345
 
 
+def test_attach_ms_auth_profile_keeps_non_dict_scope_state_attributes():
+    """Verify that attach writes profile without replacing a non-dict scope state."""
+    from cmd.api.acl.open_ai.identity import attach_ms_auth_profile
+
+    class ScopeState:
+        def __init__(self):
+            """Hold an existing ASGI attribute that attach must preserve."""
+            self.other = "kept"
+
+    profile = {"id": 12345, "enterprise": {"id": 90}}
+    state = ScopeState()
+    scope = {"state": state}
+    attach_ms_auth_profile(scope, profile)
+
+    assert scope["state"] is state
+    assert state.other == "kept"
+    assert state.chatgpt_ms_auth_profile == profile
+
+
+def test_attach_ms_auth_access_token_keeps_non_dict_scope_state_attributes():
+    """Verify that attach writes the token without replacing a non-dict scope state."""
+    from cmd.api.acl.open_ai.identity import attach_ms_auth_access_token
+
+    class ScopeState:
+        def __init__(self):
+            """Hold an existing ASGI attribute that attach must preserve."""
+            self.other = "kept"
+
+    state = ScopeState()
+    scope = {"state": state}
+    attach_ms_auth_access_token(scope, "ms-access")
+
+    assert scope["state"] is state
+    assert state.other == "kept"
+    assert state.chatgpt_ms_auth_access_token == "ms-access"
+
+
 def test_valid_token_without_local_user_is_not_unauthorized(oauth_env):
     """Verify that a valid ms-auth token for a missing local User is not 401."""
     from cmd.api.tools import mongo_tools
@@ -376,7 +456,11 @@ def test_valid_token_without_local_user_is_not_unauthorized(oauth_env):
             raise ValueError(f"User with id_external_user {identifier} not found.")
 
     mongo_tools.configure(users=Users())
-    headers = {**MCP_HEADERS, "Authorization": "Bearer user-99999"}
+    headers, _store = hub_bearer(
+        id_external_user=99999,
+        id_external_company=90,
+        ms_auth_access_token="user-99999",
+    )
     try:
         with make_client() as client:
             initialized = post_mcp(client, initialize_body(), headers=headers)
