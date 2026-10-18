@@ -22,15 +22,24 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
+    def update_user_profile(
+        self,
+        id_external_user: int,
+        *,
+        role: str | None = None,
+        usecase: str | None = None,
+    ) -> User:
+        """Persist only the supplied profile fields on the user document."""
+        pass
+
+    @abstractmethod
     def sync_sign_in_profile(
         self,
         id_external_user: int,
-        role: str,
-        usecase: str,
         *,
         id_external_company: int,
     ) -> None:
-        """Persist role, usecase, and company id after OAuth Sign in."""
+        """Persist the company id after OAuth Sign in."""
         pass
 
     @abstractmethod
@@ -60,16 +69,32 @@ class IService(ABC):
         pass
 
     @abstractmethod
-    def get_mongo_user_or_create(self, id_external_user: int, role: str, usecase: str) -> User:
+    def get_mongo_user_or_create(
+        self,
+        id_external_user: int,
+        role: str,
+        usecase: str,
+        *,
+        id_external_company: int | None = None,
+    ) -> User:
         """Return the stored user or create one with the supplied profile fields."""
+        pass
+
+    @abstractmethod
+    def update_user_profile(
+        self,
+        id_external_user: int,
+        *,
+        role: str | None = None,
+        usecase: str | None = None,
+    ) -> User:
+        """Persist only the supplied profile fields on the user document."""
         pass
 
     @abstractmethod
     def apply_sign_in_profile(
         self,
         id_external_user: int,
-        role: str,
-        usecase: str,
         *,
         ms_auth_profile: dict,
     ) -> User:

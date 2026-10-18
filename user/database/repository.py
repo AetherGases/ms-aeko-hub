@@ -31,21 +31,41 @@ class Repository(IRepository):
         except Exception as e:
             raise RuntimeError(f"Error creating user in database: {e}")
 
+    @logged(Module.DATABASE, "user.update_user_profile")
+    def update_user_profile(
+        self,
+        id_external_user: int,
+        *,
+        role: str | None = None,
+        usecase: str | None = None,
+    ) -> User:
+        """Persist only the supplied profile fields on the user document."""
+        try:
+            query, update = q.update_user_profile_query(
+                id_external_user,
+                role=role,
+                usecase=usecase,
+            )
+            result = self.db.user.update_one(query, update)
+            if result.matched_count == 0:
+                raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            return self.get_user(id_external_user)
+        except ValueError as e:
+            raise e
+        except Exception as e:
+            raise RuntimeError(f"Error updating user profile in database: {e}")
+
     @logged(Module.DATABASE, "user.sync_sign_in_profile")
     def sync_sign_in_profile(
         self,
         id_external_user: int,
-        role: str,
-        usecase: str,
         *,
         id_external_company: int,
     ) -> None:
-        """Persist role, usecase, and company id after OAuth Sign in."""
+        """Persist the company id after OAuth Sign in."""
         try:
             query, update = q.sync_sign_in_profile_query(
                 id_external_user,
-                role,
-                usecase,
                 id_external_company=id_external_company,
             )
             result = self.db.user.update_one(query, update)

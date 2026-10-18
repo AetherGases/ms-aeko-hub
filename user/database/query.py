@@ -39,18 +39,29 @@ def set_id_external_company_query(id_user: str, id_external_company: int) -> tup
     """Build the filter and $set document for a user's company identifier."""
     return id_filter("_id", id_user), {"$set": {"id_external_company": id_external_company}}
 
+def update_user_profile_query(
+    id_external_user: int,
+    *,
+    role: str | None = None,
+    usecase: str | None = None,
+) -> tuple[dict, dict]:
+    """Build the filter and partial $set document for a profile field update."""
+    fields: dict = {}
+    if role is not None:
+        fields["role"] = role
+    if usecase is not None:
+        fields["usecase"] = usecase
+    return get_user_query_filter(id_external_user), {"$set": fields}
+
+
 def sync_sign_in_profile_query(
     id_external_user: int,
-    role: str,
-    usecase: str,
     *,
     id_external_company: int,
 ) -> tuple[dict, dict]:
     """Build the filter and $set document for an OAuth Sign in profile refresh."""
     return get_user_query_filter(id_external_user), {
         "$set": {
-            "role": role,
-            "usecase": usecase,
             "id_external_company": id_external_company,
         }
     }

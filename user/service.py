@@ -5,11 +5,11 @@ from user.entity import User, UserMemory
 from user.user import IService
 
 
-def _strip_required(value: str, field: str) -> str:
-    """Return a trimmed non-empty profile field value."""
-    stripped = (value or "").strip()
+def _nonempty_string(value: str, field: str) -> str:
+    """Return a trimmed string or reject blank supplied values."""
+    stripped = value.strip()
     if not stripped:
-        raise ValueError(f"{field} is required.")
+        raise ValueError(f"{field} must be a nonempty string.")
     return stripped
 
 
@@ -51,31 +51,49 @@ class Service(IService):
             except Exception as e:
                 raise RuntimeError(f"Error creating user: {e}")
 
+    def update_user_profile(
+        self,
+        id_external_user: int,
+        *,
+        role: str | None = None,
+        usecase: str | None = None,
+    ) -> User:
+        """Persist only the supplied profile fields on the user document."""
+        if role is None and usecase is None:
+            raise ValueError("At least one of role or usecase must be supplied.")
+        update_role = _nonempty_string(role, "role") if role is not None else None
+        update_usecase = _nonempty_string(usecase, "usecase") if usecase is not None else None
+        try:
+            self.repository.update_user_profile(
+                id_external_user,
+                role=update_role,
+                usecase=update_usecase,
+            )
+            return self.get_mongo_user(id_external_user)
+        except ValueError as ve:
+            raise ve
+        except Exception as e:
+            raise RuntimeError(f"Error updating user profile: {e}")
+
     def apply_sign_in_profile(
         self,
         id_external_user: int,
-        role: str,
-        usecase: str,
         *,
         ms_auth_profile: dict,
     ) -> User:
         """Create or refresh the user from ms-auth after each OAuth Sign in."""
-        role = _strip_required(role, "role")
-        usecase = _strip_required(usecase, "usecase")
         sync_fields = sign_in_profile_sync(ms_auth_profile)
         try:
             self.repository.sync_sign_in_profile(
                 id_external_user,
-                role,
-                usecase,
                 id_external_company=sync_fields["id_external_company"],
             )
             return self.get_mongo_user(id_external_user)
         except ValueError:
             return self.repository.create_user(
                 id_external_user,
-                role,
-                usecase,
+                "",
+                "",
                 id_external_company=sync_fields["id_external_company"],
             )
 

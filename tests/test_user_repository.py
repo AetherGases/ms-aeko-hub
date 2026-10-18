@@ -113,26 +113,39 @@ def test_create_user_inserts_the_document_and_returns_the_entity():
     assert user.id == str(collection.inserted_id)
 
 
+def test_update_user_profile_overwrites_only_supplied_role():
+    """Verify that update user profile overwrites only the supplied role."""
+    collection = StubCollection(find_one_result=USER_DOCUMENT)
+    repository, _ = build_repository(user=collection)
+
+    repository.update_user_profile(12345, role="gestor")
+
+    query, update = collection.call_args("update_one")[0]
+    assert query == q.get_user_query_filter(12345)
+    assert update == {"$set": {"role": "gestor"}}
+
+
+def test_update_user_profile_overwrites_both_fields():
+    """Verify that update user profile overwrites both profile fields."""
+    collection = StubCollection(find_one_result=USER_DOCUMENT)
+    repository, _ = build_repository(user=collection)
+
+    repository.update_user_profile(12345, role="gestor", usecase="auditoria")
+
+    query, update = collection.call_args("update_one")[0]
+    assert query == q.get_user_query_filter(12345)
+    assert update == {"$set": {"role": "gestor", "usecase": "auditoria"}}
+
+
 def test_sync_sign_in_profile_updates_the_user_document():
     """Verify that sync sign in profile updates the user document."""
     collection = StubCollection(find_one_result=USER_DOCUMENT)
     repository, _ = build_repository(user=collection)
-    repository.sync_sign_in_profile(
-        12345,
-        "gestor",
-        "auditoria",
-        id_external_company=90,
-    )
+    repository.sync_sign_in_profile(12345, id_external_company=90)
 
     query, update = collection.call_args("update_one")[0]
     assert query == q.get_user_query_filter(12345)
-    assert update == {
-        "$set": {
-            "role": "gestor",
-            "usecase": "auditoria",
-            "id_external_company": 90,
-        }
-    }
+    assert update == {"$set": {"id_external_company": 90}}
 
 
 def test_sync_sign_in_profile_raises_when_the_user_is_missing():
@@ -142,12 +155,7 @@ def test_sync_sign_in_profile_raises_when_the_user_is_missing():
     )
 
     with pytest.raises(ValueError, match="not found"):
-        repository.sync_sign_in_profile(
-            12345,
-            "gestor",
-            "auditoria",
-            id_external_company=90,
-        )
+        repository.sync_sign_in_profile(12345, id_external_company=90)
 
 
 def test_create_user_query_builds_the_expected_document():
