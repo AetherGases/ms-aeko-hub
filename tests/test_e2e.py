@@ -74,7 +74,10 @@ TOOLED_AGENTS = {
     "Analista de Poluentes",
     "Analista de Gases Verdes",
     "Coordenador de Melhoria Contínua",
+    "Roteador",
 }
+
+UPDATE_USER_PROFILE_TOOL_NAME = "update_user_profile"
 
 
 class InMemoryUserRepository:
@@ -89,13 +92,14 @@ class InMemoryUserRepository:
             raise ValueError(f"User with id_external_user {id_external_user} not found.")
         return user
 
-    def create_user(self, id_external_user, role, usecase):
+    def create_user(self, id_external_user, role, usecase, *, id_external_company=None):
         """Persist a new user with the supplied profile fields."""
         user = User(
             id=f"u-{id_external_user}",
             id_external_user=id_external_user,
             role=role,
             usecase=usecase,
+            id_external_company=id_external_company,
         )
         self.users[id_external_user] = user
         return user
@@ -503,7 +507,7 @@ def test_no_agent_gets_raw_mongo_find_tools(live_app, fake_sdk, agent):
     assert tool_names.isdisjoint({"find_improvement_plan", "find_user_memory"})
 
 
-@pytest.mark.parametrize("agent", sorted(TOOLED_AGENTS))
+@pytest.mark.parametrize("agent", sorted(TOOLED_AGENTS - {"Roteador"}))
 def test_every_agent_gets_the_calculator(live_app, fake_sdk, agent):
     """Verify that every agent gets the calculator."""
     tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools[agent]}
@@ -523,12 +527,28 @@ def test_the_same_calculator_is_registered_for_every_agent(live_app, fake_sdk):
     """Verify that the same calculator is registered for every agent."""
     calculators = {
         id(tool.tool)
-        for agent in TOOLED_AGENTS
+        for agent in TOOLED_AGENTS - {"Roteador"}
         for tool in fake_sdk.RUNTIME.tools[agent]
         if tool.name == CALCULATOR_TOOL_NAME
     }
 
     assert len(calculators) == 1
+
+
+def test_roteador_gets_only_the_profile_writer(live_app, fake_sdk):
+    """Verify that Roteador receives only the profile update tool."""
+    tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools["Roteador"]}
+    assert tool_names == {UPDATE_USER_PROFILE_TOOL_NAME}
+
+
+@pytest.mark.parametrize(
+    "agent",
+    sorted(TOOLED_AGENTS - {"Roteador"}),
+)
+def test_no_other_agent_can_reach_update_user_profile(live_app, fake_sdk, agent):
+    """Verify that only Roteador can call update_user_profile."""
+    tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools[agent]}
+    assert UPDATE_USER_PROFILE_TOOL_NAME not in tool_names
 
 
 def test_lifespan_publishes_sdk_factories_on_app_state(live_app, fake_sdk):
@@ -697,16 +717,25 @@ def test_journey_unknown_user_is_404(live_app):
     assert client.get("/ai/sessions/user/ghost").status_code == 404
 
 
+SEND_MESSAGE_DEFAULTS = {
+    "id_external_user": ID_EXTERNAL_USER,
+    "id_external_company": 90,
+}
+
+
 def send(client, **body):
     """Send or capture the request messages used by the test."""
-    return client.post("/ai/user/session/message", json=body)
+    return client.post(
+        "/ai/user/session/message",
+        json={**SEND_MESSAGE_DEFAULTS, **body},
+    )
 
 
 def test_send_message_completes_the_round_trip(live_app):
     """Verify that send message completes the round trip."""
     client, _, _, session_repository = live_app
 
-    response = send(client, id_session="s1", input="What is scope 3?", id_user="u1")
+    response = send(client, id_session="s1", input="What is scope 3?")
 
     assert response.status_code == 200, response.json()
     assert response.json()["output_message"] == "echo: What is scope 3?"
@@ -717,7 +746,7 @@ def test_send_message_hands_the_session_document_to_the_sdk(live_app, fake_sdk):
     """Verify that send message hands the session document to the sdk."""
     client, _, _, _ = live_app
 
-    send(client, id_session="s1", input="What is scope 3?", id_user="u1")
+    send(client, id_session="s1", input="What is scope 3?")
 
     message, session, _ = fake_sdk.AekoMessenger.instances[-1].sent[-1]
     assert message == "What is scope 3?"
@@ -731,7 +760,7 @@ def test_send_message_builds_the_messenger_for_the_asking_user(live_app, fake_sd
     """Verify that send message builds the messenger for the asking user."""
     client, _, _, _ = live_app
 
-    send(client, id_session="s1", input="hi", id_user="u1")
+    send(client, id_session="s1", input="hi")
 
     messenger = fake_sdk.AekoMessenger.instances[-1]
     assert messenger.user.id_external_user == 12345
@@ -743,7 +772,7 @@ def test_send_message_hands_over_only_the_memories_that_are_still_valid(live_app
     """Verify that send message hands over only the memories that are still valid."""
     client, _, _, _ = live_app
 
-    send(client, id_session="s1", input="hi", id_user="u1")
+    send(client, id_session="s1", input="hi")
 
     messenger = fake_sdk.AekoMessenger.instances[-1]
     assert [memory.field for memory in messenger.memories] == ["preferred_language"]
@@ -753,8 +782,8 @@ def test_send_message_builds_a_new_messenger_for_every_request(live_app, fake_sd
     """Verify that send message builds a new messenger for every request."""
     client, _, _, _ = live_app
 
-    send(client, id_session="s1", input="one", id_user="u1")
-    send(client, id_session="s1", input="two", id_user="u1")
+    send(client, id_session="s1", input="one")
+    send(client, id_session="s1", input="two")
 
     assert len(fake_sdk.AekoMessenger.instances) == 2
 
@@ -763,7 +792,7 @@ def test_send_message_names_a_brand_new_session_after_its_first_message(live_app
     """Verify that send message names a brand new session after its first message."""
     client, _, _, session_repository = live_app
 
-    response = send(client, id_session="", input="How do I cut boiler emissions?", id_user="u1")
+    response = send(client, id_session="", input="How do I cut boiler emissions?")
 
     assert response.status_code == 200
     assert session_repository.created_names == {"session-2": "How do I cut boiler emissions?"}
@@ -774,7 +803,7 @@ def test_send_message_returns_502_when_no_reviewer_approved_a_draft(live_app, fa
     client, _, _, session_repository = live_app
     fake_sdk.AekoMessenger.next_approved = False
 
-    response = send(client, id_session="s1", input="hi", id_user="u1")
+    response = send(client, id_session="s1", input="hi")
 
     assert response.status_code == 502
     assert len(session_repository.get_session_messages("s1")) == 1
@@ -957,14 +986,20 @@ def test_an_empty_inventory_is_400_and_does_not_call_aeko(report_app, fake_sdk):
     assert fake_sdk.AekoInventoryAnalyzer.instances == []
 
 
-def test_an_unknown_user_is_404_and_stores_nothing(report_app):
-    """Verify that an unknown user is 404 and stores nothing."""
+def test_a_report_creates_a_missing_mongo_user(report_app, live_app):
+    """Verify that a report creates a missing Mongo user and completes analysis."""
     client, _, plan_repository = report_app
+    _, _, user_repository, _ = live_app
 
+    assert 99999 not in user_repository.users
     response = request_report(client, {**REPORT_BODY, "id_external_user": 99999})
 
-    assert response.status_code == 404
-    assert plan_repository.plans == []
+    assert response.status_code == 200, response.json()
+    assert len(plan_repository.plans) == 1
+    created = user_repository.users[99999]
+    assert created.role == ""
+    assert created.usecase == ""
+    assert created.id_external_company == 90
 
 
 def stored_metrics(api_main):
@@ -976,7 +1011,7 @@ def test_send_message_records_what_the_run_cost(live_app):
     """Verify that send message records what the run cost."""
     client, api_main, _, _ = live_app
 
-    send(client, id_session="s1", input="What is scope 3?", id_user="u1")
+    send(client, id_session="s1", input="What is scope 3?")
 
     (document,) = stored_metrics(api_main)
     assert document["flow"] == "conversational"
@@ -989,7 +1024,7 @@ def test_the_recorded_run_names_the_request_its_caller_was_answered_with(live_ap
     """Verify that the recorded run names the request its caller was answered with."""
     client, api_main, _, _ = live_app
 
-    response = send(client, id_session="s1", input="What is scope 3?", id_user="u1")
+    response = send(client, id_session="s1", input="What is scope 3?")
 
     (document,) = stored_metrics(api_main)
     assert document["id_request"] == response.headers["x-request-id"]
@@ -999,7 +1034,7 @@ def test_the_two_metric_bases_name_the_same_request(live_app):
     """Verify that the two metric bases name the same request."""
     client, api_main, _, _ = live_app
 
-    send(client, id_session="s1", input="What is scope 3?", id_user="u1")
+    send(client, id_session="s1", input="What is scope 3?")
 
     (request_row,) = list(api_main.db["hub_metrics"].documents)
     (run_row,) = stored_metrics(api_main)
@@ -1011,7 +1046,7 @@ def test_a_turn_no_reviewer_approved_is_still_recorded(live_app, fake_sdk):
     client, api_main, _, _ = live_app
     fake_sdk.AekoMessenger.next_approved = False
 
-    response = send(client, id_session="s1", input="hi", id_user="u1")
+    response = send(client, id_session="s1", input="hi")
 
     assert response.status_code == 502
     (document,) = stored_metrics(api_main)
@@ -1031,7 +1066,7 @@ def test_the_stored_turn_no_longer_carries_what_it_cost(live_app):
     """Verify that stored messages contain conversation fields without run metrics."""
     client, _, _, session_repository = live_app
 
-    send(client, id_session="s1", input="What is scope 3?", id_user="u1")
+    send(client, id_session="s1", input="What is scope 3?")
 
     turn = session_repository.get_session_messages("s1")[-1]
     assert set(vars(turn)) == {"input", "output", "submitted_at"}

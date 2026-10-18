@@ -42,6 +42,12 @@ USER_MEMORY_TOOL_DESCRIPTIONS = {
     "list_user_memories": "LIST_USER_MEMORIES_DESCRIPTION",
 }
 
+PROFILE_WRITE_TOOL_NAMES = {"update_user_profile"}
+
+PROFILE_WRITE_TOOL_DESCRIPTIONS = {
+    "update_user_profile": "UPDATE_USER_PROFILE_DESCRIPTION",
+}
+
 SESSION_TOOL_DESCRIPTIONS = {
     "list_user_session_names": "LIST_USER_SESSION_NAMES_DESCRIPTION",
     "get_session_messages_by_name": "GET_SESSION_MESSAGES_BY_NAME_DESCRIPTION",
@@ -163,6 +169,21 @@ class StubUserService:
         if self.error is not None:
             raise self.error
         return list(self.memories)
+
+    def update_user_profile(self, id_external_user, *, role=None, usecase=None):
+        """Record a profile update and return the user with applied fields."""
+        self.calls.append(("update_user_profile", id_external_user, role, usecase))
+        if self.error is not None:
+            raise self.error
+        if role is None and usecase is None:
+            raise ValueError("At least one of role or usecase must be supplied.")
+        if self.user is None:
+            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+        if role is not None:
+            self.user.role = role
+        if usecase is not None:
+            self.user.usecase = usecase
+        return self.user
 
 class StubSessionService:
     """Stands in for the session service the tools read from."""
@@ -719,3 +740,79 @@ def test_typed_tools_are_backed_by_their_domain_functions():
     )
 
     assert tool.func(42)[0]["defined_problem"] == "flaring"
+
+
+def test_update_user_profile_returns_stored_fields():
+    """Verify that update user profile persists through the service and returns fields."""
+    users = StubUserService(user=USER)
+    bind(users=users)
+
+    result = mongo_tools._update_user_profile(12345, role="gestor", usecase="auditoria")
+
+    assert result == {
+        "id_external_user": 12345,
+        "role": "gestor",
+        "usecase": "auditoria",
+    }
+    assert users.calls == [("update_user_profile", 12345, "gestor", "auditoria")]
+
+
+def test_update_user_profile_rejects_when_neither_field_is_supplied():
+    """Verify that update user profile requires at least one field."""
+    bind(users=StubUserService(user=USER))
+
+    with pytest.raises(ValueError, match="At least one"):
+        mongo_tools._update_user_profile(12345)
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_update_user_profile_rejects_blank_role(blank):
+    """Verify that update user profile rejects blank role strings."""
+    bind(users=StubUserService(user=USER))
+
+    with pytest.raises(ValueError, match="role must be a nonempty string"):
+        mongo_tools._update_user_profile(12345, role=blank)
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+def test_update_user_profile_rejects_blank_usecase(blank):
+    """Verify that update user profile rejects blank usecase strings."""
+    bind(users=StubUserService(user=USER))
+
+    with pytest.raises(ValueError, match="usecase must be a nonempty string"):
+        mongo_tools._update_user_profile(12345, usecase=blank)
+
+
+def test_update_user_profile_raises_when_user_is_missing():
+    """Verify that update user profile does not create a missing user."""
+    bind(users=StubUserService(user=None))
+
+    with pytest.raises(ValueError, match="12345 not found"):
+        mongo_tools._update_user_profile(12345, role="gestor")
+
+
+def test_get_user_profile_write_tools_exposes_the_profile_writer():
+    """Verify that get user profile write tools exposes only the profile writer."""
+    tools = mongo_tools.get_user_profile_write_tools()
+
+    assert {tool.name for tool in tools} == PROFILE_WRITE_TOOL_NAMES
+    assert all(isinstance(tool, Tool) and tool.description for tool in tools)
+    assert all("filter" not in tool.args and "filter_json" not in tool.args for tool in tools)
+
+
+def test_profile_write_tools_load_descriptions_from_the_environment():
+    """Verify that profile write tools load descriptions from the environment."""
+    tools = {tool.name: tool for tool in mongo_tools.get_user_profile_write_tools()}
+    for name, constant in PROFILE_WRITE_TOOL_DESCRIPTIONS.items():
+        assert tools[name].description == getattr(tool_constants, constant)
+
+
+def test_update_user_profile_tool_declares_external_user_role_and_usecase():
+    """Verify that update user profile tool declares its optional string fields."""
+    tool = next(
+        item
+        for item in mongo_tools.get_user_profile_write_tools()
+        if item.name == "update_user_profile"
+    )
+
+    assert set(tool.args) == {"id_external_user", "role", "usecase"}

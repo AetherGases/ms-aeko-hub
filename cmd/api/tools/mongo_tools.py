@@ -16,6 +16,7 @@ from cmd.api.tools.constants import (
     GET_IMPROVEMENT_PLAN_REASONING_DESCRIPTION,
     LIST_LATEST_IMPROVEMENT_PLANS_DESCRIPTION,
     GET_USER_PROFILE_BY_EXTERNAL_ID_DESCRIPTION,
+    UPDATE_USER_PROFILE_DESCRIPTION,
     LIST_USER_MEMORY_FIELDS_DESCRIPTION,
     GET_USER_MEMORY_BY_FIELD_DESCRIPTION,
     LIST_USER_MEMORIES_DESCRIPTION,
@@ -367,6 +368,29 @@ def _count_user_sessions(id_external_user: int) -> dict[str, int]:
     return {"count": len(_user_sessions(user))}
 
 
+@logged(Module.TOOL, "update_user_profile")
+def _update_user_profile(
+    id_external_user: int,
+    role: str | None = None,
+    usecase: str | None = None,
+) -> dict[str, Any]:
+    """Update role and/or usecase for an existing Mongo user."""
+
+    identifier = _positive_int(id_external_user, "id_external_user")
+    update_role = _required_text(role, "role") if role is not None else None
+    update_usecase = _required_text(usecase, "usecase") if usecase is not None else None
+    user = _user_service().update_user_profile(
+        identifier,
+        role=update_role,
+        usecase=update_usecase,
+    )
+    return {
+        "id_external_user": user.id_external_user,
+        "role": user.role,
+        "usecase": user.usecase,
+    }
+
+
 def _typed_tool(name: str, description: str, func: Any) -> Tool:
     """Build a Tool whose schema uses the function's named arguments."""
 
@@ -433,6 +457,18 @@ def get_user_memory_tools() -> list[Tool]:
             "list_user_memories",
             LIST_USER_MEMORIES_DESCRIPTION,
             _list_user_memories,
+        ),
+    ]
+
+
+def get_user_profile_write_tools() -> list[Tool]:
+    """Return typed MongoDB tools that update user profile fields."""
+
+    return [
+        _typed_tool(
+            "update_user_profile",
+            UPDATE_USER_PROFILE_DESCRIPTION,
+            _update_user_profile,
         ),
     ]
 

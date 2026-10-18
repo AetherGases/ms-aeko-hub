@@ -35,6 +35,12 @@ def test_chatgpt_catalog_is_the_union_plus_three_new_tools():
     assert {tool.name for tool in get_chatgpt_tools()} == EXPECTED
 
 
+def test_chatgpt_catalog_omits_the_roteador_profile_writer():
+    """Verify that the ChatGPT catalog never exposes update_user_profile."""
+    names = {tool.name for tool in get_chatgpt_tools()}
+    assert names.isdisjoint({"update_user_profile"})
+
+
 def test_chatgpt_catalog_has_no_duplicate_tool_names():
     """Verify that every tool name appears once in the catalog."""
     names = [tool.name for tool in get_chatgpt_tools()]

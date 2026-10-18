@@ -31,6 +31,7 @@ from cmd.api.tools.mongo_tools import (
     configure as configure_mongo_tools,
     get_improvement_plan_tools,
     get_user_memory_tools,
+    get_user_profile_write_tools,
     get_session_tools,
 )
 from cmd.api.integrations.tavily_api import (
@@ -119,6 +120,7 @@ IMPROVEMENT_PLAN_TOOLS = [AekoTool(tool=tool) for tool in get_improvement_plan_t
     AekoTool(tool=tool) for tool in get_improvement_plan_problem_tools()
 ]
 USER_MEMORY_TOOLS = [AekoTool(tool=tool) for tool in get_user_memory_tools()]
+USER_PROFILE_WRITE_TOOLS = [AekoTool(tool=tool) for tool in get_user_profile_write_tools()]
 SESSION_TOOLS = [AekoTool(tool=tool) for tool in get_session_tools()]
 
 
@@ -166,6 +168,7 @@ AEKO_TOOLS = {
     + list(SESSION_TOOLS)
     + list(CALCULATOR_TOOLS)
     + list(ROI_PAYBACK_TOOLS),
+    "Roteador": list(USER_PROFILE_WRITE_TOOLS),
 }
 
 
