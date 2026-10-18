@@ -9,6 +9,13 @@ from fastapi.testclient import TestClient
 
 from internal.http import session_handlers
 from tests.ms_auth_doubles import ms_auth_principal, override_ms_auth
+
+SEND_BODY = {
+    "id_session": "s1",
+    "input": "hi",
+    "id_external_user": 12345,
+    "id_external_company": 90,
+}
 from session.entity import Message, Session
 from user.entity import User
 from session.session import GuardrailRejectedError
@@ -218,10 +225,45 @@ def test_get_session_messages_maps_unexpected_error_to_500():
     assert "boom" in response.json()["detail"]
 
 
+class StubUserService:
+    """Return scripted users from get_mongo_user_or_create in route tests."""
+
+    create_calls = []
+
+    def __init__(self, repository=None):
+        self.repository = repository
+
+    def get_mongo_user_or_create(
+        self,
+        id_external_user,
+        role,
+        usecase,
+        *,
+        id_external_company=None,
+    ):
+        """Record provisioning and return the scripted Mongo user."""
+        StubUserService.create_calls.append(
+            {
+                "id_external_user": id_external_user,
+                "role": role,
+                "usecase": usecase,
+                "id_external_company": id_external_company,
+            }
+        )
+        return User(
+            id="u1",
+            id_external_user=id_external_user,
+            role=role,
+            usecase=usecase,
+            id_external_company=id_external_company,
+        )
+
+
 @pytest.fixture
 def patched_user_repository(monkeypatch):
-    """Replace the route user repository with a test double."""
+    """Replace the route user repository and service with test doubles."""
     monkeypatch.setattr(session_handlers, "UserRepository", StubUserRepository)
+    monkeypatch.setattr(session_handlers, "UserService", StubUserService)
     return StubUserRepository
 
 
@@ -231,7 +273,7 @@ def test_send_message_returns_the_exchange(patched_user_repository):
 
     response = build_client(service).post(
         SEND_ROUTE,
-        json={"id_session": "s1", "input": "Summarize this session.", "id_user": "u1"},
+        json={**SEND_BODY, "input": "Summarize this session."},
     )
 
     assert response.status_code == 200
@@ -246,7 +288,10 @@ def test_send_message_injects_both_sdk_factories_from_app_state(patched_user_rep
     """Verify that send message injects both sdk factories from app state."""
     service = StubSessionService(result=make_message())
 
-    build_client(service).post(SEND_ROUTE, json={"id_session": "", "input": "hi", "id_user": "u1"})
+    build_client(service).post(
+        SEND_ROUTE,
+        json={**SEND_BODY, "id_session": "", "input": "hi"},
+    )
 
     call = service.calls[0]
     assert call["aeko_messenger_factory"] is MESSENGER_FACTORY
@@ -256,24 +301,36 @@ def test_send_message_injects_both_sdk_factories_from_app_state(patched_user_rep
     assert isinstance(call["user_repository"], StubUserRepository)
 
 
-def test_send_message_defaults_missing_body_fields(patched_user_repository):
-    """Verify that send message defaults missing body fields."""
+def test_send_message_defaults_optional_session_and_input(patched_user_repository):
+    """Verify that send message defaults optional session and input fields."""
     service = StubSessionService(result=make_message())
 
-    build_client(service).post(SEND_ROUTE, json={"id_user": "u1"})
+    build_client(service).post(
+        SEND_ROUTE,
+        json={"id_external_user": 12345, "id_external_company": 90},
+    )
 
     assert service.calls[0]["input"] == ""
     assert service.calls[0]["id_session"] is None
-    assert service.calls[0]["id_session"] is None
+
+
+def test_send_message_ignores_id_user_in_the_body(patched_user_repository):
+    """Verify that send message resolves identity from external ids, not id_user."""
+    service = StubSessionService(result=make_message())
+
+    build_client(service).post(
+        SEND_ROUTE,
+        json={**SEND_BODY, "id_user": "attacker-internal-id"},
+    )
+
+    assert service.calls[0]["id_user"] == "u1"
 
 
 def test_send_message_returns_500_when_the_sdk_is_not_initialized():
     """Verify that send message returns 500 when the sdk is not initialized."""
     service = StubSessionService(result=make_message())
 
-    response = build_client(service, factories=False).post(
-        SEND_ROUTE, json={"id_session": "s1", "input": "hi", "id_user": "u1"}
-    )
+    response = build_client(service, factories=False).post(SEND_ROUTE, json=SEND_BODY)
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Aeko SDK is not initialized"
@@ -283,9 +340,7 @@ def test_send_message_maps_value_error_to_400(patched_user_repository):
     """Verify that send message maps value error to 400."""
     service = StubSessionService(error=ValueError("Session limit reached."))
 
-    response = build_client(service).post(
-        SEND_ROUTE, json={"id_session": "s1", "input": "hi", "id_user": "u1"}
-    )
+    response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Session limit reached."
@@ -297,9 +352,7 @@ def test_send_message_maps_a_rejected_answer_to_502(patched_user_repository):
         error=GuardrailRejectedError("The output guardrail rejected every draft.")
     )
 
-    response = build_client(service).post(
-        SEND_ROUTE, json={"id_session": "s1", "input": "hi", "id_user": "u1"}
-    )
+    response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
 
     assert response.status_code == 502
     assert response.json()["detail"] == "The output guardrail rejected every draft."
@@ -309,12 +362,100 @@ def test_send_message_maps_unexpected_error_to_500(patched_user_repository):
     """Verify that send message maps unexpected error to 500."""
     service = StubSessionService(error=RuntimeError("boom"))
 
-    response = build_client(service).post(
-        SEND_ROUTE, json={"id_session": "s1", "input": "hi", "id_user": "u1"}
-    )
+    response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
 
     assert response.status_code == 500
     assert "boom" in response.json()["detail"]
+
+
+def test_send_message_returns_403_when_external_user_differs(patched_user_repository):
+    """Verify that send message rejects a body user that does not match the token."""
+    StubUserService.create_calls = []
+    service = StubSessionService(result=make_message())
+    app = FastAPI()
+    app.include_router(session_handlers.router)
+    app.state.db = "fake-db"
+    app.state._state["aeko_messenger_factory"] = MESSENGER_FACTORY
+    app.state._state["aeko_session_factory"] = SESSION_FACTORY
+    override_ms_auth(app, ms_auth_principal(id_external_user=12345))
+    app.dependency_overrides[session_handlers.get_session_service] = lambda: service
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: StubUserRepository()
+
+    response = TestClient(app).post(
+        SEND_ROUTE,
+        json={**SEND_BODY, "id_external_user": 99999},
+    )
+
+    assert response.status_code == 403
+    assert service.calls == []
+    assert StubUserService.create_calls == []
+
+
+def test_send_message_returns_403_when_external_company_differs(patched_user_repository):
+    """Verify that send message rejects a body company that does not match the token."""
+    StubUserService.create_calls = []
+    service = StubSessionService(result=make_message())
+    app = FastAPI()
+    app.include_router(session_handlers.router)
+    app.state.db = "fake-db"
+    app.state._state["aeko_messenger_factory"] = MESSENGER_FACTORY
+    app.state._state["aeko_session_factory"] = SESSION_FACTORY
+    override_ms_auth(app, ms_auth_principal(id_external_company=90))
+    app.dependency_overrides[session_handlers.get_session_service] = lambda: service
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: StubUserRepository()
+
+    response = TestClient(app).post(
+        SEND_ROUTE,
+        json={**SEND_BODY, "id_external_company": 99},
+    )
+
+    assert response.status_code == 403
+    assert service.calls == []
+    assert StubUserService.create_calls == []
+
+
+def test_send_message_provisions_with_empty_role_and_usecase(patched_user_repository):
+    """Verify auto-create passes empty role and usecase to UserService."""
+    StubUserService.create_calls = []
+    service = StubSessionService(result=make_message())
+
+    response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
+
+    assert response.status_code == 200
+    assert len(StubUserService.create_calls) == 1
+    call = StubUserService.create_calls[0]
+    assert call["role"] == ""
+    assert call["usecase"] == ""
+    assert call["id_external_user"] == 12345
+    assert call["id_external_company"] == 90
+
+
+@pytest.mark.parametrize(
+    "json_body",
+    [
+        pytest.param({k: v for k, v in SEND_BODY.items() if k != "id_external_user"}, id="missing_id_external_user"),
+        pytest.param({k: v for k, v in SEND_BODY.items() if k != "id_external_company"}, id="missing_id_external_company"),
+        pytest.param({**SEND_BODY, "id_external_user": 0}, id="zero_id_external_user"),
+        pytest.param({**SEND_BODY, "id_external_company": 0}, id="zero_id_external_company"),
+        pytest.param({**SEND_BODY, "id_external_user": -1}, id="negative_id_external_user"),
+        pytest.param({**SEND_BODY, "id_external_company": -1}, id="negative_id_external_company"),
+        pytest.param({**SEND_BODY, "id_external_user": "not-a-number"}, id="non_numeric_id_external_user"),
+        pytest.param({**SEND_BODY, "id_external_company": "not-a-number"}, id="non_numeric_id_external_company"),
+    ],
+)
+def test_send_message_returns_400_and_never_creates_on_invalid_external_ids(
+    patched_user_repository, json_body
+):
+    """Verify invalid external ids return 400 without provisioning or send_message."""
+    StubUserService.create_calls = []
+    service = StubSessionService(result=make_message())
+
+    response = build_client(service).post(SEND_ROUTE, json=json_body)
+
+    assert response.status_code == 400
+    assert "must be a positive integer" in response.json()["detail"]
+    assert service.calls == []
+    assert StubUserService.create_calls == []
 
 
 COST_ROUTE = "/ai/sessions/cost"
@@ -478,9 +619,7 @@ def test_send_message_runs_the_blocking_sdk_call_off_the_event_loop(patched_user
             return super().send_message(*args, **kwargs)
 
     service = LoopAwareService()
-    response = build_client(service).post(
-        SEND_ROUTE, json={"id_session": "s1", "input": "hi", "id_user": "u1"}
-    )
+    response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
 
     assert response.status_code == 200
     assert service.ran_on_the_event_loop is False

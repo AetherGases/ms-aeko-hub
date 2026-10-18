@@ -261,7 +261,8 @@ paths:
             example:
               id_session: 65a8b3d6c0f8e1d7f4b2c001
               input: Summarize this session.
-              id_user: 65a8b3d6c0f8e1d7f4b2c010
+              id_external_user: 12345
+              id_external_company: 90
       responses:
         '200':
           description: Message processed successfully.
@@ -370,13 +371,13 @@ paths:
               example:
                 detail: inventory is required to analyze an inventory.
         '404':
-          description: No user exists for the supplied external identifier.
+          description: A domain resource referenced by the request was not found (for example, the improvement plan for the inventory).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                detail: User with id_external_user 12345 not found.
+                detail: Improvement plan with id_external_inventory 502 not found.
         '502':
           description: The analysis produced no plan or structured inventory in the expected shape.
           content:
@@ -576,9 +577,8 @@ components:
     SendMessageRequest:
       type: object
       required:
-        - id_session
-        - input
-        - id_user
+        - id_external_user
+        - id_external_company
       properties:
         id_session:
           type: string
@@ -588,10 +588,14 @@ components:
           type: string
           description: Message text to send to the AI agent.
           example: Summarize this session.
-        id_user:
-          type: string
-          description: Internal user identifier.
-          example: 65a8b3d6c0f8e1d7f4b2c010
+        id_external_user:
+          type: integer
+          description: External user identifier used to resolve or create the Mongo user.
+          example: 12345
+        id_external_company:
+          type: integer
+          description: External company identifier stored when a new user is created.
+          example: 90
     ReportRequestData:
       type: object
       properties:

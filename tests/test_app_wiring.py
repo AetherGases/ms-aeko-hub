@@ -21,6 +21,12 @@ from user.service import Service as UserService
 
 REPORT_ROUTE = "/ai/report"
 SEND_MESSAGE_ROUTE = "/ai/user/session/message"
+SEND_MESSAGE_BODY = {
+    "id_session": "65a8b3d6c0f8e1d7f4b2c001",
+    "input": "What is scope 3?",
+    "id_external_user": 12345,
+    "id_external_company": 90,
+}
 MS_AUTH_HEADERS = {"Authorization": "Bearer ms-access"}
 INVENTORY_REPORT_AUTH_HEADERS = {"authentication-key": "test-inventory-report-key"}
 ID_SESSION = "65a8b3d6c0f8e1d7f4b2c001"
@@ -396,7 +402,7 @@ def test_send_message_runs_through_the_concrete_repositories(api_main, configure
 
     response = build_client(session_handlers.router, database, api_main=api_main).post(
         SEND_MESSAGE_ROUTE,
-        json={"id_session": ID_SESSION, "input": "What is scope 3?", "id_user": ID_USER},
+        json=SEND_MESSAGE_BODY,
     )
 
     assert response.status_code == 200
@@ -414,7 +420,7 @@ def test_send_message_hands_the_real_dtos_to_the_sdk(api_main, configured_sdk):
 
     build_client(session_handlers.router, database, api_main=api_main).post(
         SEND_MESSAGE_ROUTE,
-        json={"id_session": ID_SESSION, "input": "What is scope 3?", "id_user": ID_USER},
+        json=SEND_MESSAGE_BODY,
     )
 
     messenger = configured_sdk.AekoMessenger.instances[-1]
@@ -427,7 +433,10 @@ def test_send_message_hands_the_real_dtos_to_the_sdk(api_main, configured_sdk):
 
 def test_send_message_returns_400_when_the_user_does_not_own_the_session(api_main, configured_sdk):
     """Verify that send message returns 400 when the user does not own the session."""
-    session_collection = StubCollection(find_one_results=session_reads())
+    foreign_session = {**SESSION_DOCUMENT, "id_user": "someone-else"}
+    session_collection = StubCollection(
+        find_one_results=[{"messages_count": 0}, foreign_session, foreign_session, MESSAGES_DOCUMENT]
+    )
     database = StubDatabase(
         session=session_collection,
         user=StubCollection(find_one_result=USER_DOCUMENT),
@@ -436,7 +445,7 @@ def test_send_message_returns_400_when_the_user_does_not_own_the_session(api_mai
 
     response = build_client(session_handlers.router, database, api_main=api_main).post(
         SEND_MESSAGE_ROUTE,
-        json={"id_session": ID_SESSION, "input": "hi", "id_user": "someone-else"},
+        json={**SEND_MESSAGE_BODY, "input": "hi"},
     )
 
     assert response.status_code == 400
@@ -452,7 +461,7 @@ def test_send_message_fails_when_the_sdk_was_never_configured(api_main):
 
     response = build_client(session_handlers.router, database, api_main=api_main).post(
         SEND_MESSAGE_ROUTE,
-        json={"id_session": ID_SESSION, "input": "hi", "id_user": ID_USER},
+        json={**SEND_MESSAGE_BODY, "input": "hi"},
     )
 
     assert response.status_code == 500

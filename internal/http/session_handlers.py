@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 from internal.http.ms_auth_authorization import (
     ensure_company,
+    ensure_external_user,
     ensure_internal_user,
     ensure_session_belongs_to_principal,
 )
@@ -23,8 +24,30 @@ from session.session import GuardrailRejectedError, IService
 
 from cmd.memory_generator_worker.constants import REDIS_SCAN_COUNT, SESSION_INACTIVITY_MINUTES
 from user.database.repository import Repository as UserRepository
+from user.service import Service as UserService
 
 router = APIRouter(tags=["Sessions"], dependencies=[Depends(require_ms_auth_principal)])
+
+
+def _positive_external_id(value, field_name: str) -> int:
+    """Accept a positive integer or numeric string and reject bools or other values."""
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"{field_name} must be a positive integer.")
+
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if stripped == "" or not stripped.isdigit():
+            raise ValueError(f"{field_name} must be a positive integer.")
+        parsed = int(stripped)
+    else:
+        raise ValueError(f"{field_name} must be a positive integer.")
+
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be a positive integer.")
+
+    return parsed
 
 class SessionResponseData(BaseModel):
     id: str = Field(..., description="Internal session identifier.", json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"})
@@ -271,7 +294,7 @@ def get_session_messages(
                 "application/json": {
                     "schema": {
                         "type": "object",
-                        "required": ["id_session", "input", "id_user"],
+                        "required": ["id_external_user", "id_external_company"],
                         "properties": {
                             "id_session": {
                                 "type": "string",
@@ -283,17 +306,23 @@ def get_session_messages(
                                 "description": "Message text to send to the AI agent.",
                                 "example": "Summarize this session.",
                             },
-                            "id_user": {
-                                "type": "string",
-                                "description": "Internal user identifier.",
-                                "example": "65a8b3d6c0f8e1d7f4b2c010",
+                            "id_external_user": {
+                                "type": "integer",
+                                "description": "External user identifier used to resolve or create the Mongo user.",
+                                "example": 12345,
+                            },
+                            "id_external_company": {
+                                "type": "integer",
+                                "description": "External company identifier stored when a new user is created.",
+                                "example": 90,
                             },
                         },
                     },
                     "example": {
                         "id_session": "65a8b3d6c0f8e1d7f4b2c001",
                         "input": "Summarize this session.",
-                        "id_user": "65a8b3d6c0f8e1d7f4b2c010",
+                        "id_external_user": 12345,
+                        "id_external_company": 90,
                     },
                 }
             },
@@ -304,28 +333,44 @@ async def send_message(
     request: Request,
     principal: MsAuth,
     service: IService = Depends(get_session_service),
-    user_repository: UserRepository = Depends(get_user_repository),
 ):
     """Send a conversation turn and persist the approved response with its run metrics."""
     body = await request.json()
 
     id_session = body.get("id_session")
     input = body.get("input", "")
-    id_user = body.get("id_user", "")
+
+    try:
+        id_external_user = _positive_external_id(body.get("id_external_user"), "id_external_user")
+        id_external_company = _positive_external_id(
+            body.get("id_external_company"),
+            "id_external_company",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     aeko_messenger_factory = request.app.state._state.get("aeko_messenger_factory")
     aeko_session_factory = request.app.state._state.get("aeko_session_factory")
 
     if not aeko_messenger_factory or not aeko_session_factory:
         raise HTTPException(status_code=500, detail="Aeko SDK is not initialized")
 
-    ensure_internal_user(principal, id_user, user_repository)
+    ensure_external_user(principal, id_external_user)
+    ensure_company(principal, id_external_company)
+
+    user = UserService(UserRepository(request.app.state.db)).get_mongo_user_or_create(
+        id_external_user,
+        "",
+        "",
+        id_external_company=id_external_company,
+    )
 
     try:
         message = await run_in_threadpool(
             service.send_message,
             id_session,
             input,
-            id_user,
+            user.id,
             aeko_messenger_factory,
             aeko_session_factory,
             UserRepository(request.app.state.db),
