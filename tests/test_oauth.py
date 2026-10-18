@@ -88,8 +88,6 @@ def authorize(
     code_challenge=None,
     code_challenge_method="S256",
     resource=None,
-    usecase="Inventário de emissões",
-    role_from_form="Analista ESG",
 ):
     """Run authorize with ChatGPT PKCE defaults for the test."""
     return service.authorize(
@@ -101,8 +99,6 @@ def authorize(
         code_challenge=s256(VERIFIER) if code_challenge is None else code_challenge,
         code_challenge_method=code_challenge_method,
         resource=resource,
-        usecase=usecase,
-        role_from_form=role_from_form,
     )
 
 
@@ -160,7 +156,6 @@ def test_authorize_calls_auth_then_profile_and_does_not_return_ms_tokens(
         state="xyz",
         code_challenge=s256("verifier-12345678901234567890123456789012"),
         code_challenge_method="S256",
-        usecase="Inventário de emissões",
     )
     assert order == [("login", "caio@example.com", "secret"), ("profile", "ms-access")]
     assert "ms-access" not in redirect
@@ -170,44 +165,29 @@ def test_authorize_calls_auth_then_profile_and_does_not_return_ms_tokens(
 
 
 def test_authorize_applies_sign_in_profile_after_authentication(monkeypatch, oauth_env):
-    """Verify that authorize refreshes role and usecase on every Sign in."""
+    """Verify that authorize syncs the Mongo user from ms-auth after Sign in."""
     from oauth.service import Service
 
     calls = []
 
     class Users:
-        def apply_sign_in_profile(
-            self,
-            id_external_user,
-            role,
-            usecase,
-            *,
-            ms_auth_profile=None,
-        ):
+        def apply_sign_in_profile(self, id_external_user, *, ms_auth_profile=None):
             """Record the Sign in profile sync."""
             calls.append(
                 (
                     "apply_sign_in_profile",
                     id_external_user,
-                    role,
-                    usecase,
                     ms_auth_profile,
                 )
             )
 
     stub_sign_in(monkeypatch, profile=oauth_profile(id=42))
-    authorize(
-        Service(InMemoryCodes(), Users()),
-        usecase="Plano de melhorias",
-        role_from_form="Especialista",
-    )
+    authorize(Service(InMemoryCodes(), Users()))
 
     assert calls == [
         (
             "apply_sign_in_profile",
             42,
-            "Especialista",
-            "Plano de melhorias",
             oauth_profile(id=42),
         ),
     ]

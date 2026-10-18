@@ -16,8 +16,6 @@ class IService(ABC):
         code_challenge: str,
         code_challenge_method: str,
         resource=None,
-        usecase: str = "",
-        role_from_form: str | None = None,
     ) -> str:
         """Authenticate the user and return the client redirect URL with code, state, and iss."""
         pass

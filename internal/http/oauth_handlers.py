@@ -52,8 +52,6 @@ def render_sign_in(
     resource: str | None = None,
     error: str | None = None,
     email: str = "",
-    role: str = "",
-    usecase: str = "",
 ) -> str:
     """Return the ChatGPT Sign in webview HTML for the supplied OAuth parameters."""
     hidden = [
@@ -87,8 +85,6 @@ def render_sign_in(
         .replace("__HIDDEN_FIELDS__", "".join(hidden))
         .replace("__ERROR_BLOCK__", error_block)
         .replace("__EMAIL_VALUE__", escape(email))
-        .replace("__ROLE_VALUE__", escape(role))
-        .replace("__USECASE_VALUE__", escape(usecase))
     )
 
 
@@ -155,8 +151,6 @@ def authorize_post(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
-    role: str = Form(...),
-    usecase: str = Form(...),
     client_id: str = Form(...),
     redirect_uri: str = Form(...),
     state: str = Form(...),
@@ -173,8 +167,6 @@ def authorize_post(
         "code_challenge_method": code_challenge_method,
         "resource": resource,
         "email": email,
-        "role": role,
-        "usecase": usecase,
     }
     try:
         location = get_oauth_service(request).authorize(
@@ -186,8 +178,6 @@ def authorize_post(
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
             resource=resource,
-            usecase=usecase,
-            role_from_form=role,
         )
     except ValueError:
         return HTMLResponse(

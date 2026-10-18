@@ -86,8 +86,6 @@ class Service(IService):
         code_challenge: str,
         code_challenge_method: str,
         resource=None,
-        usecase: str = "",
-        role_from_form: str | None = None,
     ) -> str:
         """Authenticate the user and return the client redirect URL with code, state, and iss."""
         validate_authorize_parameters(
@@ -115,8 +113,6 @@ class Service(IService):
             try:
                 self.users.apply_sign_in_profile(
                     id_external_user,
-                    role_from_form or "",
-                    usecase,
                     ms_auth_profile=profile,
                 )
             except Exception as exc:
