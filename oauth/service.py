@@ -1,4 +1,4 @@
-"""Orchestrate ChatGPT Sign in against ms-auth and return the ms-auth access token on exchange."""
+"""Orchestrate ChatGPT Sign in against ms-auth and mint this API's access token on exchange."""
 
 import hmac
 import re
@@ -15,7 +15,7 @@ from oauth.constants import (
     OAUTH_ISSUER,
 )
 from oauth.oauth import IService
-from oauth.token import pkce_s256
+from oauth.token import encode_access_token, pkce_s256
 
 _callback_id = r"[A-Za-z0-9_-]+"
 _cimd_callback = re.compile(rf"^https://chatgpt\.com/oauth/{_callback_id}/client\.json$")
@@ -71,9 +71,10 @@ def validate_authorize_parameters(
 
 
 class Service(IService):
-    def __init__(self, repository, users=None):
+    def __init__(self, repository, users=None, sessions=None):
         self.repository = repository
         self.users = users
+        self.sessions = sessions
 
     def authorize(
         self,
@@ -146,7 +147,7 @@ class Service(IService):
         code_verifier: str,
         resource=None,
     ) -> dict:
-        """Exchange a one-time authorization code for the ms-auth access token."""
+        """Exchange a one-time authorization code for this API's access token."""
         if resource is not None and resource != "" and resource != OAUTH_AUDIENCE:
             raise ValueError("resource is not accepted.")
         document = self.repository.pop(code)
@@ -163,12 +164,27 @@ class Service(IService):
             challenge, stored
         ):
             raise ValueError("Invalid PKCE verifier.")
-        access_token = document.get("ms_auth_access_token")
-        if not access_token:
+        ms_auth_access_token = document.get("ms_auth_access_token")
+        if not ms_auth_access_token:
             raise ValueError("Invalid authorization code.")
         expires_in = document.get("ms_auth_access_token_expires_in")
         if not isinstance(expires_in, int) or expires_in <= 0:
             expires_in = OAUTH_ACCESS_TOKEN_TTL_SECONDS
+        if self.sessions is None:
+            raise ValueError("Invalid authorization code.")
+        access_token = encode_access_token(
+            document["id_external_user"],
+            document["id_external_company"],
+        )
+        self.sessions.save(
+            access_token,
+            {
+                "ms_auth_access_token": ms_auth_access_token,
+                "id_external_user": document["id_external_user"],
+                "id_external_company": document["id_external_company"],
+            },
+            expires_in,
+        )
         return {
             "access_token": access_token,
             "token_type": "Bearer",

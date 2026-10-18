@@ -25,6 +25,21 @@ class InMemoryCodes:
         return self._items.pop(code, None)
 
 
+class InMemorySessions:
+    def __init__(self):
+        self._items = {}
+        self.ttls = {}
+
+    def save(self, access_token, document, ttl):
+        """Persist a hub-token session for the configured TTL."""
+        self._items[access_token] = document
+        self.ttls[access_token] = ttl
+
+    def get(self, access_token):
+        """Return the stored session document, if present."""
+        return self._items.get(access_token)
+
+
 def s256(verifier: str) -> str:
     """Return the S256 code challenge for a PKCE verifier."""
     digest = hashlib.sha256(verifier.encode("ascii")).digest()
@@ -232,16 +247,18 @@ def test_authorize_does_not_call_profile_when_login_is_not_authenticated(
     assert called == []
 
 
-def test_exchange_returns_the_ms_auth_access_token(monkeypatch, oauth_env):
-    """Verify that exchange returns the ms-auth access token issued at Sign in."""
+def test_exchange_returns_this_api_access_token(monkeypatch, oauth_env):
+    """Verify that exchange returns this API's access token, not the ms-auth token."""
     from oauth.service import Service
+    from oauth.token import decode_access_token
 
     monkeypatch.setattr(
         "oauth.service.login",
         lambda email, password: {"authenticated": True, "accessToken": "ms-access"},
     )
     monkeypatch.setattr("oauth.service.get_profile", lambda token: oauth_profile(id=7))
-    service = Service(InMemoryCodes())
+    sessions = InMemorySessions()
+    service = Service(InMemoryCodes(), sessions=sessions)
     verifier = "verifier-12345678901234567890123456789012"
     location = service.authorize(
         "caio@example.com",
@@ -262,8 +279,17 @@ def test_exchange_returns_the_ms_auth_access_token(monkeypatch, oauth_env):
     assert set(body) == {"access_token", "token_type", "expires_in"}
     assert body["token_type"] == "Bearer"
     assert body["expires_in"] == 3600
-    assert "refresh" not in body
-    assert body["access_token"] == "ms-access"
+    assert body["access_token"] != "ms-access"
+    claims = decode_access_token(body["access_token"])
+    assert claims.id_external_user == 7
+    assert claims.id_external_company == 90
+    stored = sessions.get(body["access_token"])
+    assert stored == {
+        "ms_auth_access_token": "ms-access",
+        "id_external_user": 7,
+        "id_external_company": 90,
+    }
+    assert sessions.ttls[body["access_token"]] == 3600
 
 
 def test_exchange_uses_expires_in_from_login_payload(monkeypatch, oauth_env):
@@ -279,7 +305,8 @@ def test_exchange_uses_expires_in_from_login_payload(monkeypatch, oauth_env):
         },
     )
     monkeypatch.setattr("oauth.service.get_profile", lambda token: oauth_profile(id=7))
-    service = Service(InMemoryCodes())
+    sessions = InMemorySessions()
+    service = Service(InMemoryCodes(), sessions=sessions)
     verifier = "verifier-12345678901234567890123456789012"
     location = service.authorize(
         "caio@example.com",
@@ -298,6 +325,7 @@ def test_exchange_uses_expires_in_from_login_payload(monkeypatch, oauth_env):
         code_verifier=verifier,
     )
     assert body["expires_in"] == 1800
+    assert sessions.ttls[body["access_token"]] == 1800
 
 
 def test_authorize_redirect_includes_issuer_and_state(monkeypatch, oauth_env):
@@ -408,7 +436,7 @@ def test_exchange_rejects_mismatched_pkce_verifier(monkeypatch, oauth_env):
     from oauth.service import Service
 
     stub_sign_in(monkeypatch)
-    service = Service(InMemoryCodes())
+    service = Service(InMemoryCodes(), sessions=InMemorySessions())
     location = authorize(service)
     code = parse_qs(urlparse(location).query)["code"][0]
     with pytest.raises(ValueError):
@@ -425,7 +453,7 @@ def test_exchange_rejects_reused_authorization_code(monkeypatch, oauth_env):
     from oauth.service import Service
 
     stub_sign_in(monkeypatch)
-    service = Service(InMemoryCodes())
+    service = Service(InMemoryCodes(), sessions=InMemorySessions())
     location = authorize(service)
     code = parse_qs(urlparse(location).query)["code"][0]
     service.exchange(
@@ -444,12 +472,13 @@ def test_exchange_rejects_reused_authorization_code(monkeypatch, oauth_env):
 
 
 def test_exchange_accepts_resource_equal_to_audience(monkeypatch, oauth_env):
-    """Verify that exchange still returns the ms-auth token when resource matches the audience."""
+    """Verify that exchange still returns the hub token when resource matches the audience."""
     from oauth.constants import OAUTH_AUDIENCE
     from oauth.service import Service
+    from oauth.token import decode_access_token
 
     stub_sign_in(monkeypatch, profile=oauth_profile(id=7))
-    service = Service(InMemoryCodes())
+    service = Service(InMemoryCodes(), sessions=InMemorySessions())
     location = authorize(service, resource=OAUTH_AUDIENCE)
     code = parse_qs(urlparse(location).query)["code"][0]
     body = service.exchange(
@@ -459,7 +488,8 @@ def test_exchange_accepts_resource_equal_to_audience(monkeypatch, oauth_env):
         code_verifier=VERIFIER,
         resource=OAUTH_AUDIENCE,
     )
-    assert body["access_token"] == "ms-access"
+    assert body["access_token"] != "ms-access"
+    assert decode_access_token(body["access_token"]).id_external_user == 7
 
 
 def test_exchange_rejects_resource_that_is_not_the_audience(monkeypatch, oauth_env):
@@ -467,7 +497,7 @@ def test_exchange_rejects_resource_that_is_not_the_audience(monkeypatch, oauth_e
     from oauth.service import Service
 
     stub_sign_in(monkeypatch)
-    service = Service(InMemoryCodes())
+    service = Service(InMemoryCodes(), sessions=InMemorySessions())
     location = authorize(service)
     code = parse_qs(urlparse(location).query)["code"][0]
     with pytest.raises(ValueError):
@@ -478,6 +508,25 @@ def test_exchange_rejects_resource_that_is_not_the_audience(monkeypatch, oauth_e
             code_verifier=VERIFIER,
             resource="https://evil.example/mcp/",
         )
+
+
+def test_session_repository_saves_and_gets_by_access_token():
+    """Verify that the session repository round-trips a hub-token document."""
+    from oauth.cache.session_repository import Repository
+
+    redis = FakeRedis()
+    repository = Repository(redis)
+    repository.save(
+        "hub.jwt",
+        {"ms_auth_access_token": "ms-access", "id_external_user": 7, "id_external_company": 90},
+        1800,
+    )
+    assert repository.get("hub.jwt") == {
+        "ms_auth_access_token": "ms-access",
+        "id_external_user": 7,
+        "id_external_company": 90,
+    }
+    assert repository.get("missing") is None
 
 
 def test_redis_repository_saves_and_pops_authorization_codes(oauth_env):

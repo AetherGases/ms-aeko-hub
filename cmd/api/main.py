@@ -62,6 +62,7 @@ from internal.http.session_handlers import router as session_router
 from internal.http.upload_ticket_handlers import router as upload_ticket_router
 from internal.http.user_handlers import router as user_router
 from oauth.cache.repository import Repository as OAuthCodeRepository
+from oauth.cache.session_repository import Repository as OAuthSessionRepository
 from oauth.service import Service as OAuthService
 from internal.shared import (
     Event,
@@ -403,7 +404,11 @@ async def lifespan(app: FastAPI):
         improvement_plans=ImprovementPlanService(ImprovementPlanRepository(db)),
     )
 
-    app.state.oauth = OAuthService(OAuthCodeRepository(redis_client), user_service)
+    app.state.oauth = OAuthService(
+        OAuthCodeRepository(redis_client),
+        users=user_service,
+        sessions=OAuthSessionRepository(redis_client),
+    )
 
     ticket_service = UploadTicketService(UploadTicketRepository(redis_client))
     configure_inventory_tools(
