@@ -446,6 +446,43 @@ def test_attach_ms_auth_access_token_keeps_non_dict_scope_state_attributes():
     assert state.chatgpt_ms_auth_access_token == "ms-access"
 
 
+def test_get_user_profile_with_hub_token_returns_ms_auth_catalog(oauth_env, monkeypatch):
+    """Verify that get_user_profile_by_external_id over MCP returns the live ms-auth profile."""
+    from cmd.api.tools import mongo_tools
+    from user.user import User
+
+    class Users:
+        def get_mongo_user(self, identifier):
+            """Return the Mongo user for the bound ChatGPT identity."""
+            return User(id="u1", id_external_user=identifier, role="analyst", usecase="inventory")
+
+    mongo_tools.configure(users=Users())
+    headers, _ = hub_bearer(id_external_user=12345, ms_auth_access_token="ms-access")
+    try:
+        with make_client() as client:
+            initialized = post_mcp(client, initialize_body(), headers=headers)
+            session = initialized.headers.get("mcp-session-id")
+            call_headers = {**headers}
+            if session:
+                call_headers["mcp-session-id"] = session
+            post_mcp(
+                client,
+                {"jsonrpc": "2.0", "method": "notifications/initialized"},
+                headers=call_headers,
+            )
+            response = post_mcp(
+                client,
+                call_tool("get_user_profile_by_external_id", {}),
+                headers=call_headers,
+            )
+    finally:
+        mongo_tools.configure()
+
+    assert response.status_code != 401
+    assert "analyst" in response.text
+    assert "Sign in is required" not in response.text
+
+
 def test_valid_token_without_local_user_is_not_unauthorized(oauth_env):
     """Verify that a valid ms-auth token for a missing local User is not 401."""
     from cmd.api.tools import mongo_tools
