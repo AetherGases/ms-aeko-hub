@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import json
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -326,6 +327,10 @@ def test_exchange_uses_expires_in_from_login_payload(monkeypatch, oauth_env):
     )
     assert body["expires_in"] == 1800
     assert sessions.ttls[body["access_token"]] == 1800
+    payload_b64 = body["access_token"].split(".")[1]
+    padding = "=" * (-len(payload_b64) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(payload_b64 + padding))
+    assert payload["exp"] - payload["iat"] == 1800
 
 
 def test_authorize_redirect_includes_issuer_and_state(monkeypatch, oauth_env):

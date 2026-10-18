@@ -175,6 +175,7 @@ class Service(IService):
         access_token = encode_access_token(
             document["id_external_user"],
             document["id_external_company"],
+            expires_in,
         )
         self.sessions.save(
             access_token,

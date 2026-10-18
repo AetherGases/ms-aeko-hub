@@ -37,8 +37,17 @@ def pkce_s256(verifier: str) -> str:
     return b64url(hashlib.sha256(verifier.encode("ascii")).digest())
 
 
-def encode_access_token(id_external_user: int, id_external_company: int) -> str:
+def encode_access_token(
+    id_external_user: int,
+    id_external_company: int,
+    ttl_seconds: int | None = None,
+) -> str:
     """Return a signed access token for one user and company."""
+    ttl = (
+        ttl_seconds
+        if isinstance(ttl_seconds, int) and ttl_seconds > 0
+        else OAUTH_ACCESS_TOKEN_TTL_SECONDS
+    )
     now = int(time.time())
     header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     payload = b64url(
@@ -49,7 +58,7 @@ def encode_access_token(id_external_user: int, id_external_company: int) -> str:
                 "sub": str(id_external_user),
                 "id_external_company": id_external_company,
                 "iat": now,
-                "exp": now + OAUTH_ACCESS_TOKEN_TTL_SECONDS,
+                "exp": now + ttl,
                 "scope": "mcp",
             },
             separators=(",", ":"),
