@@ -196,7 +196,12 @@ def _http_status_for_value_error(exc: ValueError) -> int:
             },
         },
         400: {"description": "The inventory Markdown is empty or a domain catalog rule was rejected."},
-        404: {"description": "No user exists for the supplied external identifier."},
+        404: {
+            "description": (
+                "A domain resource referenced by the request was not found "
+                "(for example, the improvement plan for the inventory)."
+            ),
+        },
         502: {"description": "The analysis produced no plan or structured inventory in the expected shape."},
         503: {"description": "Database connection is unavailable."},
         500: {"description": "The Aeko SDK is not initialized or an unexpected error occurred."},

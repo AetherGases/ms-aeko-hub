@@ -49,13 +49,26 @@ class Service(IService):
         if not inventory or not str(inventory).strip():
             raise ValueError("inventory is required to analyze an inventory.")
 
-        user = user_service.get_mongo_user(id_external_user)
+        if (
+            isinstance(id_external_user, bool)
+            or not isinstance(id_external_user, int)
+            or id_external_user <= 0
+        ):
+            raise ValueError("id_external_user is required to analyze an inventory.")
+
         if (
             isinstance(id_external_company, bool)
             or not isinstance(id_external_company, int)
             or id_external_company <= 0
         ):
             raise ValueError("id_external_company is required to analyze an inventory.")
+
+        user = user_service.get_mongo_user_or_create(
+            id_external_user,
+            "",
+            "",
+            id_external_company=id_external_company,
+        )
 
         existing = _current_plan(self.repository, id_external_inventory)
         if (

@@ -185,14 +185,18 @@ def test_input_report_maps_value_error_to_400(patched_user_service):
     assert response.json()["detail"] == "inventory is required to analyze an inventory."
 
 
-def test_input_report_maps_a_missing_user_to_404(patched_user_service):
-    """Verify that input report maps a missing user to 404."""
-    service = StubReportService(error=ValueError("User with id_external_user 12345 not found."))
+def test_input_report_still_maps_other_not_found_value_errors_to_404(patched_user_service):
+    """Verify that input report maps unrelated not-found errors to 404."""
+    service = StubReportService(
+        error=ValueError("Improvement plan with id_external_inventory 502 not found.")
+    )
 
     response = post_report(build_client(service), REPORT_BODY)
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "User with id_external_user 12345 not found."
+    assert response.json()["detail"] == (
+        "Improvement plan with id_external_inventory 502 not found."
+    )
 
 
 def test_input_report_maps_a_plan_that_never_took_shape_to_502(patched_user_service):

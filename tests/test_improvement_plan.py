@@ -195,6 +195,7 @@ class StubUserService:
         self.user = user
         self.memories = []
         self.company_updates = []
+        self.or_create_calls = []
 
     def get_mongo_user(self, id_external_user):
         """Retrieve the stored user matching an external identifier."""
@@ -202,8 +203,13 @@ class StubUserService:
             raise ValueError(f"User with id_external_user {id_external_user} not found.")
         return self.user
 
-    def get_mongo_user_or_create(self, id_external_user, role, usecase):
+    def get_mongo_user_or_create(
+        self, id_external_user, role, usecase, *, id_external_company=None
+    ):
         """Return the stored user or create one with the supplied profile fields."""
+        self.or_create_calls.append(
+            (id_external_user, role, usecase, id_external_company)
+        )
         try:
             return self.get_mongo_user(id_external_user)
         except ValueError:
@@ -251,13 +257,14 @@ def build_service(repository=None):
 
 
 def run(repository=None, analyzers=None, users=None, id_external_inventory=ID_INVENTORY,
-        inventory=INVENTORY_MARKDOWN, id_external_company=90, gases=None, scopes=None, categories=None):
+        inventory=INVENTORY_MARKDOWN, id_external_user=ID_EXTERNAL_USER,
+        id_external_company=90, gases=None, scopes=None, categories=None):
     """Execute the scenario under test."""
     service = build_service(repository)
     return service.input_inventory(
         id_external_inventory,
         inventory,
-        ID_EXTERNAL_USER,
+        id_external_user,
         id_external_company,
         gases if gases is not None else GASES,
         scopes if scopes is not None else SCOPES,
@@ -699,14 +706,19 @@ def test_an_empty_inventory_is_rejected_before_the_analyzer():
     assert analyzers.built == []
 
 
-def test_a_missing_user_is_rejected_before_the_analyzer():
-    """Verify that a missing user is rejected before the analyzer."""
+def test_a_missing_user_is_created_via_or_create_and_analysis_continues():
+    """Verify that a missing user is auto-created and inventory analysis runs."""
     analyzers = StubAnalyzerFactory()
+    users = StubUserService(user=None)
 
-    with pytest.raises(ValueError, match="not found"):
-        run(users=StubUserService(user=None), analyzers=analyzers)
+    inventory = run(users=users, analyzers=analyzers)
 
-    assert analyzers.built == []
+    assert users.or_create_calls == [(ID_EXTERNAL_USER, "", "", 90)]
+    assert users.user.role == ""
+    assert users.user.usecase == ""
+    assert len(analyzers.built) == 1
+    assert isinstance(inventory, ExtractedInventory)
+    assert users.company_updates == [(ID_USER, 90)]
 
 
 def test_input_inventory_persists_id_external_company_on_the_plan_and_user():
@@ -725,9 +737,22 @@ def test_input_inventory_persists_id_external_company_on_the_plan_and_user():
 def test_input_inventory_rejects_an_unusable_company(bad):
     """Verify that input inventory rejects an unusable company."""
     analyzers = StubAnalyzerFactory()
+    users = StubUserService()
     with pytest.raises(ValueError, match="id_external_company"):
-        run(id_external_company=bad, analyzers=analyzers)
+        run(id_external_company=bad, analyzers=analyzers, users=users)
     assert analyzers.built == []
+    assert users.or_create_calls == []
+
+
+@pytest.mark.parametrize("bad", [None, 0, -1, True, False])
+def test_input_inventory_rejects_an_unusable_user(bad):
+    """Verify that input inventory rejects an unusable external user id."""
+    analyzers = StubAnalyzerFactory()
+    users = StubUserService()
+    with pytest.raises(ValueError, match="id_external_user"):
+        run(id_external_user=bad, analyzers=analyzers, users=users)
+    assert analyzers.built == []
+    assert users.or_create_calls == []
 
 
 def test_input_inventory_rejects_an_existing_plan_for_another_company():
