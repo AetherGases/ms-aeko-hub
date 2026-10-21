@@ -540,3 +540,128 @@ def test_mounted_app_challenges_ask_aeko_without_bearer(api_main, oauth_env, mon
 
     assert_unauthorized_challenge(response)
     assert calls == []
+
+
+def test_jsonrpc_batch_containing_ask_aeko_does_not_execute_the_tool(
+    oauth_env, monkeypatch
+):
+    """Verify that a JSON-RPC batch with ask_aeko returns 401 and never runs the tool."""
+    calls = []
+
+    def fake_ask(*args, **kwargs):
+        """Record a domain call that the 401 gate must not make."""
+        calls.append((args, kwargs))
+        return "should-not-run"
+
+    monkeypatch.setattr("cmd.api.tools.ask_aeko.ask_aeko", fake_ask)
+
+    batch = [
+        call_tool("calculator", {"expression": "1+1"}, id=1),
+        call_tool("ask_aeko", {"input": "hi"}, id=2),
+    ]
+    with make_client() as client:
+        response = post_mcp(client, batch)
+
+    assert_unauthorized_challenge(response)
+    assert calls == []
+
+
+def test_non_object_jsonrpc_garbage_is_unauthorized(oauth_env, monkeypatch):
+    """Verify that non-object MCP JSON is rejected with 401 and not forwarded unsigned."""
+    calls = []
+
+    def fake_ask(*args, **kwargs):
+        """Record a domain call that the 401 gate must not make."""
+        calls.append((args, kwargs))
+        return "should-not-run"
+
+    monkeypatch.setattr("cmd.api.tools.ask_aeko.ask_aeko", fake_ask)
+
+    with make_client() as client:
+        response = client.post(
+            f"{MCP_PREFIX}/",
+            headers=MCP_HEADERS,
+            content=b"not-json",
+        )
+
+    assert_unauthorized_challenge(response)
+    assert calls == []
+
+
+def test_catalog_tool_omitted_from_old_allowlist_still_requires_identity(
+    oauth_env, monkeypatch
+):
+    """Verify that an authenticated catalog tool still 401s unsigned when omitted from AUTHENTICATED_CHATGPT_TOOL_NAMES."""
+    monkeypatch.setattr(
+        "cmd.api.acl.mcp_auth.AUTHENTICATED_CHATGPT_TOOL_NAMES",
+        set(),
+        raising=False,
+    )
+    calls = []
+
+    def fake_ask(*args, **kwargs):
+        """Record a domain call that the 401 gate must not make."""
+        calls.append((args, kwargs))
+        return "should-not-run"
+
+    monkeypatch.setattr("cmd.api.tools.ask_aeko.ask_aeko", fake_ask)
+
+    with make_client() as client:
+        response = post_mcp(client, call_tool("ask_aeko", {"input": "hi"}))
+
+    assert_unauthorized_challenge(response)
+    assert calls == []
+
+
+def test_unknown_tools_call_without_authorization_challenges_sign_in(
+    oauth_env, monkeypatch
+):
+    """Verify that a tools/call name outside ANONYMOUS_CHATGPT_TOOL_NAMES is 401 unsigned."""
+    calls = []
+
+    def fake_ask(*args, **kwargs):
+        """Record a domain call that the 401 gate must not make."""
+        calls.append((args, kwargs))
+        return "should-not-run"
+
+    monkeypatch.setattr("cmd.api.tools.ask_aeko.ask_aeko", fake_ask)
+
+    with make_client() as client:
+        response = post_mcp(client, call_tool("not_in_old_allowlist", {}))
+
+    assert_unauthorized_challenge(response)
+    assert calls == []
+
+
+def test_oversized_mcp_body_is_rejected(oauth_env, monkeypatch):
+    """Verify that an MCP POST over MCP_MAX_BODY_BYTES is rejected without running tools."""
+    from cmd.api.acl.mcp_auth import MCP_MAX_BODY_BYTES
+
+    calls = []
+
+    def fake_calc(*args, **kwargs):
+        """Record a calculator call that an oversized body must not reach."""
+        calls.append((args, kwargs))
+        return "1"
+
+    monkeypatch.setattr("cmd.api.tools.calculator._calculate", fake_calc)
+
+    padding = "0" * MCP_MAX_BODY_BYTES
+    with make_client() as client:
+        response = client.post(
+            f"{MCP_PREFIX}/",
+            headers=MCP_HEADERS,
+            json=call_tool("calculator", {"expression": padding}),
+        )
+
+    assert response.status_code in (413, 401)
+    assert calls == []
+
+
+def test_fastmcp_enables_dns_rebinding_protection(oauth_env):
+    """Verify that the ChatGPT FastMCP server enables DNS rebinding protection."""
+    from cmd.api.acl.open_ai.server import build_mcp_server
+
+    settings = build_mcp_server().settings.transport_security
+    assert settings is not None
+    assert settings.enable_dns_rebinding_protection is True

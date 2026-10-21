@@ -3,8 +3,13 @@
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 
-from cmd.api.acl.ms_auth_security import MsAuthPrincipal, parse_bearer_authorization, resolve_ms_auth_access_token
+from cmd.api.acl.ms_auth_security import (
+    MsAuthPrincipal,
+    parse_bearer_authorization,
+    resolve_ms_auth_access_token_cached,
+)
 from cmd.api.acl.open_ai.identity import (
     bind_id_external_company,
     bind_id_external_user,
@@ -23,7 +28,7 @@ async def require_ms_auth_principal(request: Request):
     if token is None:
         raise HTTPException(status_code=401, detail="Missing access token.")
     try:
-        principal = resolve_ms_auth_access_token(token)
+        principal = await run_in_threadpool(resolve_ms_auth_access_token_cached, token)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     user_token = bind_id_external_user(principal.id_external_user)

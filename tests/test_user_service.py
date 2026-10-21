@@ -288,3 +288,43 @@ def test_get_mongo_user_or_create_wraps_unexpected_create_errors():
 
     with pytest.raises(RuntimeError, match="mongo down"):
         service.get_mongo_user_or_create(99, "analyst", "report_generation")
+
+
+def test_get_mongo_user_or_create_syncs_company_for_an_existing_user():
+    """Verify that get mongo user or create persists company on an existing user."""
+    updated = User(
+        id="u1",
+        id_external_user=12345,
+        role="analyst",
+        usecase="report_generation",
+        id_external_company=91,
+    )
+
+    class Repository(StubUserRepository):
+        def get_user(self, id_external_user):
+            """Return the original user until company has been synced."""
+            self.calls.append(("get_user", id_external_user))
+            if any(call[0] == "sync_sign_in_profile" for call in self.calls):
+                return updated
+            return USER
+
+        def sync_sign_in_profile(self, id_external_user, **kwargs):
+            """Record the same company sync used after OAuth Sign in."""
+            self.calls.append(("sync_sign_in_profile", id_external_user, kwargs))
+            return None
+
+        def create_user(self, id_external_user, role, usecase, **kwargs):
+            """Fail if an existing user is inserted again."""
+            raise AssertionError("existing user must not be created")
+
+    repository = Repository()
+    service = Service(repository)
+
+    assert service.get_mongo_user_or_create(
+        12345, "analyst", "report_generation", id_external_company=91
+    ) is updated
+    assert repository.calls == [
+        ("get_user", 12345),
+        ("sync_sign_in_profile", 12345, {"id_external_company": 91}),
+        ("get_user", 12345),
+    ]

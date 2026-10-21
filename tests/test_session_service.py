@@ -267,7 +267,7 @@ def failing_messengers(error):
 def send(service, id_session=ID_SESSION, input="hi", id_user=ID_USER,
          messengers=None, sessions=None, users=None):
     """Send or capture the request messages used by the test."""
-    return service.send_message(
+    result = service.send_message(
         id_session,
         input,
         id_user,
@@ -275,6 +275,7 @@ def send(service, id_session=ID_SESSION, input="hi", id_user=ID_USER,
         sessions or StubSessionFactory(),
         users or StubUserRepository(),
     )
+    return result.message
 
 
 def test_service_implements_the_service_interface():
@@ -377,11 +378,19 @@ def test_send_message_returns_the_exchange():
     """Verify that send message returns the exchange."""
     service, _ = build_service()
 
-    message = send(service, input="What is scope 3?")
+    result = service.send_message(
+        ID_SESSION,
+        "What is scope 3?",
+        ID_USER,
+        StubMessengerFactory(),
+        StubSessionFactory(),
+        StubUserRepository(),
+    )
 
-    assert isinstance(message, Message)
-    assert message.input == "What is scope 3?"
-    assert message.output == "echo: What is scope 3?"
+    assert isinstance(result.message, Message)
+    assert result.message.input == "What is scope 3?"
+    assert result.message.output == "echo: What is scope 3?"
+    assert result.session.id == ID_SESSION
 
 
 def test_send_message_reads_the_turn_out_of_the_response_message():
@@ -579,9 +588,18 @@ def test_send_message_names_a_brand_new_session_after_its_first_message():
     """Verify that send message names a brand new session after its first message."""
     service, repository = build_service()
 
-    send(service, id_session="", input="How do I cut boiler emissions?")
+    result = service.send_message(
+        "",
+        "How do I cut boiler emissions?",
+        ID_USER,
+        StubMessengerFactory(),
+        StubSessionFactory(),
+        StubUserRepository(),
+    )
 
     assert repository.names == {"session-2": "How do I cut boiler emissions?"}
+    assert result.session.id == "session-2"
+    assert result.session.name == "How do I cut boiler emissions?"
 
 
 def test_send_message_shortens_a_long_first_message_into_the_session_name():

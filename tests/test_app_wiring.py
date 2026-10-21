@@ -1,5 +1,6 @@
 """Verify app wiring behavior and error handling."""
 
+import importlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +14,7 @@ from internal.http import improvement_plan_handlers, session_handlers, user_hand
 from session.cache.repository import Repository as CacheRepository
 from session.database.repository import Repository as SessionRepository
 from session.service import Service as SessionService
-from tests.conftest import FakeRedis
+from tests.conftest import FakeMongoClient, FakeRedis
 from tests.mongo_doubles import StubCollection, StubDatabase
 from user.database.repository import Repository as UserRepository
 from tests.ms_auth_doubles import override_ms_auth
@@ -92,7 +93,7 @@ def test_swagger_yaml_documents_ms_auth_bearer_on_protected_routes():
     [
         "/ai/user/{id_external_user}",
         "/ai/sessions/cost",
-        "/ai/sessions/user/{id_user}",
+        "/ai/sessions/user/{id_external_user}",
         "/ai/session/{id_session}/messages",
         SEND_MESSAGE_ROUTE,
         "/ai/user/{id_external_user}/inventory-upload/{ticket}/signature",
@@ -350,7 +351,7 @@ def test_get_user_sessions_runs_through_the_concrete_repository():
         user=StubCollection(find_one_result=USER_DOCUMENT),
     )
 
-    response = build_client(session_handlers.router, database).get(f"/ai/sessions/user/{ID_USER}")
+    response = build_client(session_handlers.router, database).get("/ai/sessions/user/12345")
 
     assert response.status_code == 200
     assert response.json() == [{"id": ID_SESSION, "name": "Weekly emissions review"}]
@@ -407,6 +408,8 @@ def test_send_message_runs_through_the_concrete_repositories(api_main, configure
 
     assert response.status_code == 200
     assert response.json()["output_message"] == "echo: What is scope 3?"
+    assert response.json()["id_session"] == ID_SESSION
+    assert response.json()["session_name"] == "Weekly emissions review"
     assert len(session_collection.call_args("update_one")) == 1
 
 
@@ -465,4 +468,69 @@ def test_send_message_fails_when_the_sdk_was_never_configured(api_main):
     )
 
     assert response.status_code == 500
-    assert "not configured" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "not configured" not in response.text
+
+
+def test_send_message_updates_company_on_an_existing_mongo_user(api_main, configured_sdk):
+    """Verify that send message persists the principal company on an existing Mongo user."""
+    existing = {**USER_DOCUMENT, "id_external_company": 80}
+    user_collection = StubCollection(find_one_result=existing)
+    database = StubDatabase(
+        session=StubCollection(find_one_results=session_reads()),
+        user=user_collection,
+        user_memory=StubCollection(find_result=[]),
+    )
+
+    response = build_client(session_handlers.router, database, api_main=api_main).post(
+        SEND_MESSAGE_ROUTE,
+        json=SEND_MESSAGE_BODY,
+    )
+
+    assert response.status_code == 200
+    updates = user_collection.call_args("update_one")
+    assert any(
+        update.get("$set", {}).get("id_external_company") == 90
+        for _query, update in updates
+    )
+
+
+def test_docs_return_404_when_env_is_missing(api_main):
+    """Verify that missing ENV does not serve OpenAPI docs."""
+    assert api_main.app.docs_url is None
+    assert api_main.app.redoc_url is None
+    assert api_main.app.openapi_url is None
+    with TestClient(api_main.app) as client:
+        assert client.get("/docs").status_code == 404
+        assert client.get("/redoc").status_code == 404
+        assert client.get("/openapi.json").status_code == 404
+
+
+def test_docs_return_404_when_env_is_production(api_main, monkeypatch):
+    """Verify that ENV=production does not serve /docs."""
+    monkeypatch.setenv("ENV", "production")
+    module = importlib.reload(api_main)
+    monkeypatch.setattr(module, "MongoClient", FakeMongoClient)
+    monkeypatch.setattr(module, "Redis", FakeRedis)
+    assert module.app.docs_url is None
+    assert module.app.redoc_url is None
+    assert module.app.openapi_url is None
+    with TestClient(module.app) as client:
+        assert client.get("/docs").status_code == 404
+        assert client.get("/redoc").status_code == 404
+        assert client.get("/openapi.json").status_code == 404
+
+
+def test_docs_are_enabled_when_env_is_development(api_main, monkeypatch):
+    """Verify that ENV=development serves OpenAPI docs regardless of case."""
+    monkeypatch.setenv("ENV", "Development")
+    module = importlib.reload(api_main)
+    monkeypatch.setattr(module, "MongoClient", FakeMongoClient)
+    monkeypatch.setattr(module, "Redis", FakeRedis)
+    assert module.app.docs_url == "/docs"
+    assert module.app.redoc_url == "/redoc"
+    assert module.app.openapi_url == "/openapi.json"
+    with TestClient(module.app) as client:
+        assert client.get("/docs").status_code == 200
+        assert client.get("/redoc").status_code == 200
+        assert client.get("/openapi.json").status_code == 200

@@ -7,6 +7,7 @@ from typing import Any
 
 from langchain_core.tools import Tool, create_schema_from_function
 
+from cmd.api.acl.open_ai.wrappers import wrap_chatgpt_tools
 from internal.shared import Module, logged
 
 from cmd.api.tools.constants import (
@@ -24,6 +25,7 @@ from cmd.api.tools.constants import (
     GET_SESSION_MESSAGES_BY_NAME_DESCRIPTION,
     GET_LATEST_SESSION_MESSAGES_DESCRIPTION,
     COUNT_USER_SESSIONS_DESCRIPTION,
+    MAX_LATEST_IMPROVEMENT_PLANS,
 )
 
 from improvement_plan.entity import ImprovementPlan
@@ -176,6 +178,16 @@ def _require_user(id_external_user: Any) -> User:
     return _user_service().get_mongo_user(identifier)
 
 
+def _valid_memories(user: User) -> list[UserMemory]:
+    """Return the user's memories that have not expired."""
+
+    return [
+        memory
+        for memory in _user_service().get_user_memories(user.id)
+        if memory.is_valid()
+    ]
+
+
 def _user_sessions(user: User) -> list[Session]:
     """List a user's sessions, treating an empty store as no sessions."""
 
@@ -246,19 +258,18 @@ def _list_latest_improvement_plans(id_external_user: int, n: int) -> list[dict[s
     user = _require_user(id_external_user)
     company = _company_id(user)
     limit = _positive_int(n, "n")
+    if limit > MAX_LATEST_IMPROVEMENT_PLANS:
+        raise ValueError(f"n must be at most {MAX_LATEST_IMPROVEMENT_PLANS}.")
     documents = [_plan_catalog(plan) for plan in _plans().list_latest(limit, company)]
     return _newest_first(documents, "updated_at")[:limit]
 
 
 def _assert_profile_subject(id_external_user: int) -> None:
-    """Reject profile reads that do not match the bound OAuth subject."""
+    """Reject profile reads when identity is unbound or does not match the subject."""
 
-    try:
-        from cmd.api.acl.open_ai.identity import current_id_external_user
+    from cmd.api.acl.open_ai.identity import current_id_external_user
 
-        bound = current_id_external_user()
-    except RuntimeError:
-        return
+    bound = current_id_external_user()
     if bound != id_external_user:
         raise ValueError("id_external_user does not match the OAuth token.")
 
@@ -288,28 +299,28 @@ def _get_user_profile_by_external_id(id_external_user: int) -> dict[str, Any]:
 
 @logged(Module.TOOL, "list_user_memories")
 def _list_user_memories(id_external_user: int) -> list[dict[str, Any]]:
-    """List memory field and description pairs for an external user."""
+    """List unexpired memory field and description pairs for an external user."""
 
     user = _require_user(id_external_user)
-    return [_pick_keys(_memory_document(memory), ("field", "description")) for memory in _user_service().get_user_memories(user.id)]
+    return [_pick_keys(_memory_document(memory), ("field", "description")) for memory in _valid_memories(user)]
 
 
 @logged(Module.TOOL, "list_user_memory_fields")
 def _list_user_memory_fields(id_external_user: int) -> list[dict[str, Any]]:
-    """List memory field names for an external user."""
+    """List unexpired memory field names for an external user."""
 
     user = _require_user(id_external_user)
-    return [_pick_keys(_memory_document(memory), ("field",)) for memory in _user_service().get_user_memories(user.id)]
+    return [_pick_keys(_memory_document(memory), ("field",)) for memory in _valid_memories(user)]
 
 
 @logged(Module.TOOL, "get_user_memory_by_field")
 def _get_user_memory_by_field(id_external_user: int, field: str) -> dict[str, Any]:
-    """Return one memory's field and description for an external user."""
+    """Return one unexpired memory's field and description for an external user."""
 
     identifier = _positive_int(id_external_user, "id_external_user")
     field_name = _required_text(field, "field")
     user = _require_user(identifier)
-    for memory in _user_service().get_user_memories(user.id):
+    for memory in _valid_memories(user):
         if memory.field == field_name:
             return _pick_keys(_memory_document(memory), ("field", "description"))
     raise ValueError(f"No memory found for field {field_name}.")
@@ -403,98 +414,106 @@ def _typed_tool(name: str, description: str, func: Any) -> Tool:
 
 
 def get_improvement_plan_tools() -> list[Tool]:
-    """Return typed read-only MongoDB tools restricted to improvement plans."""
+    """Return typed plan tools that inject bound identity and hide other companies."""
 
-    return [
-        _typed_tool(
-            "get_improvement_plan_by_inventory",
-            GET_IMPROVEMENT_PLAN_BY_INVENTORY_DESCRIPTION,
-            _get_improvement_plan_by_inventory,
-        ),
-        _typed_tool(
-            "get_improvement_plan_problem",
-            GET_IMPROVEMENT_PLAN_PROBLEM_DESCRIPTION,
-            _get_improvement_plan_problem,
-        ),
-        _typed_tool(
-            "get_improvement_plan_method",
-            GET_IMPROVEMENT_PLAN_METHOD_DESCRIPTION,
-            _get_improvement_plan_method,
-        ),
-        _typed_tool(
-            "get_improvement_plan_reasoning",
-            GET_IMPROVEMENT_PLAN_REASONING_DESCRIPTION,
-            _get_improvement_plan_reasoning,
-        ),
-        _typed_tool(
-            "list_latest_improvement_plans",
-            LIST_LATEST_IMPROVEMENT_PLANS_DESCRIPTION,
-            _list_latest_improvement_plans,
-        ),
-    ]
+    return wrap_chatgpt_tools(
+        [
+            _typed_tool(
+                "get_improvement_plan_by_inventory",
+                GET_IMPROVEMENT_PLAN_BY_INVENTORY_DESCRIPTION,
+                _get_improvement_plan_by_inventory,
+            ),
+            _typed_tool(
+                "get_improvement_plan_problem",
+                GET_IMPROVEMENT_PLAN_PROBLEM_DESCRIPTION,
+                _get_improvement_plan_problem,
+            ),
+            _typed_tool(
+                "get_improvement_plan_method",
+                GET_IMPROVEMENT_PLAN_METHOD_DESCRIPTION,
+                _get_improvement_plan_method,
+            ),
+            _typed_tool(
+                "get_improvement_plan_reasoning",
+                GET_IMPROVEMENT_PLAN_REASONING_DESCRIPTION,
+                _get_improvement_plan_reasoning,
+            ),
+            _typed_tool(
+                "list_latest_improvement_plans",
+                LIST_LATEST_IMPROVEMENT_PLANS_DESCRIPTION,
+                _list_latest_improvement_plans,
+            ),
+        ]
+    )
 
 
 def get_user_memory_tools() -> list[Tool]:
-    """Return typed read-only MongoDB tools restricted to users and memories."""
+    """Return typed user and memory tools that inject bound conversation identity."""
 
-    return [
-        _typed_tool(
-            "get_user_profile_by_external_id",
-            GET_USER_PROFILE_BY_EXTERNAL_ID_DESCRIPTION,
-            _get_user_profile_by_external_id,
-        ),
-        _typed_tool(
-            "list_user_memory_fields",
-            LIST_USER_MEMORY_FIELDS_DESCRIPTION,
-            _list_user_memory_fields,
-        ),
-        _typed_tool(
-            "get_user_memory_by_field",
-            GET_USER_MEMORY_BY_FIELD_DESCRIPTION,
-            _get_user_memory_by_field,
-        ),
-        _typed_tool(
-            "list_user_memories",
-            LIST_USER_MEMORIES_DESCRIPTION,
-            _list_user_memories,
-        ),
-    ]
+    return wrap_chatgpt_tools(
+        [
+            _typed_tool(
+                "get_user_profile_by_external_id",
+                GET_USER_PROFILE_BY_EXTERNAL_ID_DESCRIPTION,
+                _get_user_profile_by_external_id,
+            ),
+            _typed_tool(
+                "list_user_memory_fields",
+                LIST_USER_MEMORY_FIELDS_DESCRIPTION,
+                _list_user_memory_fields,
+            ),
+            _typed_tool(
+                "get_user_memory_by_field",
+                GET_USER_MEMORY_BY_FIELD_DESCRIPTION,
+                _get_user_memory_by_field,
+            ),
+            _typed_tool(
+                "list_user_memories",
+                LIST_USER_MEMORIES_DESCRIPTION,
+                _list_user_memories,
+            ),
+        ]
+    )
 
 
 def get_user_profile_write_tools() -> list[Tool]:
-    """Return typed MongoDB tools that update user profile fields."""
+    """Return typed profile writers that inject bound conversation identity."""
 
-    return [
-        _typed_tool(
-            "update_user_profile",
-            UPDATE_USER_PROFILE_DESCRIPTION,
-            _update_user_profile,
-        ),
-    ]
+    return wrap_chatgpt_tools(
+        [
+            _typed_tool(
+                "update_user_profile",
+                UPDATE_USER_PROFILE_DESCRIPTION,
+                _update_user_profile,
+            ),
+        ]
+    )
 
 
 def get_session_tools() -> list[Tool]:
-    """Return typed read-only MongoDB tools restricted to conversation sessions."""
+    """Return typed session tools that inject bound conversation identity."""
 
-    return [
-        _typed_tool(
-            "list_user_session_names",
-            LIST_USER_SESSION_NAMES_DESCRIPTION,
-            _list_user_session_names,
-        ),
-        _typed_tool(
-            "get_session_messages_by_name",
-            GET_SESSION_MESSAGES_BY_NAME_DESCRIPTION,
-            _get_session_messages_by_name,
-        ),
-        _typed_tool(
-            "get_latest_session_messages",
-            GET_LATEST_SESSION_MESSAGES_DESCRIPTION,
-            _get_latest_session_messages,
-        ),
-        _typed_tool(
-            "count_user_sessions",
-            COUNT_USER_SESSIONS_DESCRIPTION,
-            _count_user_sessions,
-        ),
-    ]
+    return wrap_chatgpt_tools(
+        [
+            _typed_tool(
+                "list_user_session_names",
+                LIST_USER_SESSION_NAMES_DESCRIPTION,
+                _list_user_session_names,
+            ),
+            _typed_tool(
+                "get_session_messages_by_name",
+                GET_SESSION_MESSAGES_BY_NAME_DESCRIPTION,
+                _get_session_messages_by_name,
+            ),
+            _typed_tool(
+                "get_latest_session_messages",
+                GET_LATEST_SESSION_MESSAGES_DESCRIPTION,
+                _get_latest_session_messages,
+            ),
+            _typed_tool(
+                "count_user_sessions",
+                COUNT_USER_SESSIONS_DESCRIPTION,
+                _count_user_sessions,
+            ),
+        ]
+    )

@@ -1,10 +1,12 @@
 """Verify typed Mongo tools read through domain services."""
 
 import importlib
+from datetime import datetime
 
 import pytest
 from langchain_core.tools import Tool
 
+from cmd.api.acl.open_ai.wrappers import _strip_identity_from_description
 from cmd.api.tools import constants as tool_constants
 from cmd.api.tools import mongo_tools
 from improvement_plan.entity import ImprovementPlan
@@ -105,6 +107,38 @@ MEMORY = UserMemory(
     id_user=USER_ID,
     field="preferred_language",
     description="pt-BR",
+)
+EXPIRED_MEMORY = UserMemory(
+    id="m-expired",
+    id_user=USER_ID,
+    field="old_goal",
+    description="expired",
+    expires_at=datetime(2020, 1, 1),
+)
+FUTURE_MEMORY = UserMemory(
+    id="m-future",
+    id_user=USER_ID,
+    field="current_goal",
+    description="active",
+    expires_at=datetime(2099, 1, 1),
+)
+OTHER_COMPANY_PLAN = ImprovementPlan(
+    id="plan-other",
+    id_external_inventory=502,
+    id_external_company=99,
+    defined_problem="secret",
+    method="x",
+    reasoning="y",
+    updated_at="2026-01-01T00:00:00Z",
+)
+OWN_COMPANY_PLAN = ImprovementPlan(
+    id="plan-own",
+    id_external_inventory=42,
+    id_external_company=90,
+    defined_problem="flaring",
+    method="PDCA",
+    reasoning="replace the flare",
+    updated_at="2026-07-26T14:30:00Z",
 )
 SESSION = Session(
     id="s1",
@@ -213,6 +247,18 @@ def reset_mongo_tools():
     mongo_tools.configure()
     yield
     mongo_tools.configure()
+
+
+@pytest.fixture
+def bound_user():
+    """Bind the conversation user identity for wrapped Mongo tools."""
+    from cmd.api.acl.open_ai.identity import bind_id_external_user, reset_id_external_user
+
+    token = bind_id_external_user(12345)
+    try:
+        yield 12345
+    finally:
+        reset_id_external_user(token)
 
 
 def bind(*, plans=None, users=None, sessions=None):
@@ -643,7 +689,9 @@ def test_improvement_plan_tools_load_descriptions_from_the_environment():
     """Verify that improvement plan tools load descriptions from the environment."""
     tools = {tool.name: tool for tool in mongo_tools.get_improvement_plan_tools()}
     for name, constant in PLAN_TOOL_DESCRIPTIONS.items():
-        assert tools[name].description == getattr(tool_constants, constant)
+        assert tools[name].description == _strip_identity_from_description(
+            getattr(tool_constants, constant)
+        )
 
 
 def test_get_improvement_plan_by_inventory_tool_declares_the_inventory_argument():
@@ -657,14 +705,14 @@ def test_get_improvement_plan_by_inventory_tool_declares_the_inventory_argument(
     assert set(tool.args) == {"id_external_inventory"}
 
 
-def test_list_latest_improvement_plans_tool_declares_user_and_n():
-    """Verify that list latest improvement plans tool declares user and n."""
+def test_list_latest_improvement_plans_tool_declares_only_n():
+    """Verify that list latest improvement plans hides id_external_user from the LLM."""
     tool = next(
         item
         for item in mongo_tools.get_improvement_plan_tools()
         if item.name == "list_latest_improvement_plans"
     )
-    assert set(tool.args) == {"id_external_user", "n"}
+    assert set(tool.args) == {"n"}
 
 
 def test_get_user_memory_tools_exposes_the_typed_user_catalog():
@@ -679,18 +727,20 @@ def test_user_memory_tools_load_descriptions_from_the_environment():
     """Verify that user memory tools load descriptions from the environment."""
     tools = {tool.name: tool for tool in mongo_tools.get_user_memory_tools()}
     for name, constant in USER_MEMORY_TOOL_DESCRIPTIONS.items():
-        assert tools[name].description == getattr(tool_constants, constant)
+        assert tools[name].description == _strip_identity_from_description(
+            getattr(tool_constants, constant)
+        )
 
 
-def test_get_user_memory_by_field_tool_declares_external_user_and_field():
-    """Verify that get user memory by field tool declares external user and field."""
+def test_get_user_memory_by_field_tool_declares_only_field():
+    """Verify that get user memory by field hides id_external_user from the LLM."""
     tool = next(
         item
         for item in mongo_tools.get_user_memory_tools()
         if item.name == "get_user_memory_by_field"
     )
 
-    assert set(tool.args) == {"id_external_user", "field"}
+    assert set(tool.args) == {"field"}
 
 
 def test_get_session_tools_exposes_the_typed_session_catalog():
@@ -705,41 +755,46 @@ def test_session_tools_load_descriptions_from_the_environment():
     """Verify that session tools load descriptions from the environment."""
     tools = {tool.name: tool for tool in mongo_tools.get_session_tools()}
     for name, constant in SESSION_TOOL_DESCRIPTIONS.items():
-        assert tools[name].description == getattr(tool_constants, constant)
+        assert tools[name].description == _strip_identity_from_description(
+            getattr(tool_constants, constant)
+        )
 
 
-def test_get_session_messages_by_name_tool_declares_external_user_and_session_name():
-    """Verify that get session messages by name tool declares external user and session name."""
+def test_get_session_messages_by_name_tool_declares_only_session_name():
+    """Verify that get session messages by name hides id_external_user from the LLM."""
     tool = next(
         item
         for item in mongo_tools.get_session_tools()
         if item.name == "get_session_messages_by_name"
     )
 
-    assert set(tool.args) == {"id_external_user", "session_name"}
+    assert set(tool.args) == {"session_name"}
 
 
-def test_get_latest_session_messages_tool_declares_external_user_session_name_and_n():
-    """Verify that get latest session messages tool declares external user session name and n."""
+def test_get_latest_session_messages_tool_declares_session_name_and_n():
+    """Verify that get latest session messages hides id_external_user from the LLM."""
     tool = next(
         item
         for item in mongo_tools.get_session_tools()
         if item.name == "get_latest_session_messages"
     )
 
-    assert set(tool.args) == {"id_external_user", "session_name", "n"}
+    assert set(tool.args) == {"session_name", "n"}
 
 
-def test_typed_tools_are_backed_by_their_domain_functions():
+def test_typed_tools_are_backed_by_their_domain_functions(bound_user):
     """Verify that typed tools are backed by their domain functions."""
-    bind(plans=StubPlanService(plan=PLAN))
+    bind(
+        plans=StubPlanService(plan=OWN_COMPANY_PLAN),
+        users=StubUserService(user=COMPANY_USER),
+    )
     tool = next(
         item
         for item in mongo_tools.get_improvement_plan_tools()
         if item.name == "get_improvement_plan_by_inventory"
     )
 
-    assert tool.func(42)[0]["defined_problem"] == "flaring"
+    assert tool.func(id_external_inventory=42)[0]["defined_problem"] == "flaring"
 
 
 def test_update_user_profile_returns_stored_fields():
@@ -804,15 +859,152 @@ def test_profile_write_tools_load_descriptions_from_the_environment():
     """Verify that profile write tools load descriptions from the environment."""
     tools = {tool.name: tool for tool in mongo_tools.get_user_profile_write_tools()}
     for name, constant in PROFILE_WRITE_TOOL_DESCRIPTIONS.items():
-        assert tools[name].description == getattr(tool_constants, constant)
+        assert tools[name].description == _strip_identity_from_description(
+            getattr(tool_constants, constant)
+        )
 
 
-def test_update_user_profile_tool_declares_external_user_role_and_usecase():
-    """Verify that update user profile tool declares its optional string fields."""
+def test_update_user_profile_tool_declares_role_and_usecase():
+    """Verify that update user profile hides id_external_user from the LLM."""
     tool = next(
         item
         for item in mongo_tools.get_user_profile_write_tools()
         if item.name == "update_user_profile"
     )
 
-    assert set(tool.args) == {"id_external_user", "role", "usecase"}
+    assert set(tool.args) == {"role", "usecase"}
+
+
+def _named_tool(tools, name):
+    """Return the catalog tool with the supplied name."""
+    return next(item for item in tools if item.name == name)
+
+
+def test_list_user_memories_tool_uses_bound_identity_not_another_user(bound_user):
+    """Verify that a wrong LLM id_external_user cannot read another user's memories."""
+    users = StubUserService(user=USER, memories=[MEMORY])
+    bind(users=users)
+
+    result = _named_tool(mongo_tools.get_user_memory_tools(), "list_user_memories").func()
+
+    assert result == [{"field": "preferred_language", "description": "pt-BR"}]
+    assert users.calls == [("get_mongo_user", 12345), ("get_user_memories", USER_ID)]
+
+
+def test_list_user_session_names_tool_uses_bound_identity_not_another_user(bound_user):
+    """Verify that a wrong LLM id_external_user cannot read another user's sessions."""
+    users = StubUserService(user=USER)
+    sessions = StubSessionService(sessions=[SESSION])
+    bind(users=users, sessions=sessions)
+
+    result = _named_tool(mongo_tools.get_session_tools(), "list_user_session_names").func()
+
+    assert result == [{"name": "Weekly emissions review"}]
+    assert users.calls == [("get_mongo_user", 12345)]
+    assert sessions.calls == [("get_user_sessions", USER_ID)]
+
+
+def test_list_user_memories_tool_rejects_unbound_identity():
+    """Verify that listing memories raises when conversation identity is unbound."""
+    bind(users=StubUserService(user=USER, memories=[MEMORY]))
+
+    with pytest.raises(RuntimeError, match="ChatGPT identity is not bound"):
+        _named_tool(mongo_tools.get_user_memory_tools(), "list_user_memories").func()
+
+
+def test_get_user_profile_by_external_id_rejects_unbound_identity():
+    """Verify that profile reads raise when conversation identity is unbound."""
+    bind(users=StubUserService(user=USER))
+
+    with pytest.raises(RuntimeError, match="ChatGPT identity is not bound"):
+        mongo_tools._get_user_profile_by_external_id(12345)
+
+
+def test_get_improvement_plan_by_inventory_tool_hides_another_company(bound_user):
+    """Verify that an other-company plan is not found on the Aeko tool path."""
+    plans = StubPlanService(plan=OTHER_COMPANY_PLAN)
+    bind(plans=plans, users=StubUserService(user=COMPANY_USER))
+
+    with pytest.raises(ValueError, match="not found"):
+        _named_tool(
+            mongo_tools.get_improvement_plan_tools(),
+            "get_improvement_plan_by_inventory",
+        ).func(id_external_inventory=502)
+
+
+def test_get_user_profile_by_external_id_omits_cpf_phone_and_permissions():
+    """Verify that the ChatGPT profile catalog omits cpf, phone, and permissions."""
+    from cmd.api.acl.open_ai.identity import (
+        bind_id_external_user,
+        bind_ms_auth_profile,
+        reset_id_external_user,
+        reset_ms_auth_profile,
+    )
+
+    catalog_user = User(
+        id=USER_ID,
+        id_external_user=12345,
+        role="analyst",
+        usecase="report_generation",
+    )
+    bind(users=StubUserService(user=catalog_user))
+    profile_token = bind_ms_auth_profile(MS_AUTH_PROFILE)
+    user_token = bind_id_external_user(12345)
+    try:
+        result = mongo_tools._get_user_profile_by_external_id(12345)
+    finally:
+        reset_ms_auth_profile(profile_token)
+        reset_id_external_user(user_token)
+
+    assert "cpf" not in result
+    assert "phone" not in result
+    assert "permissions" not in result
+    assert result["id"] == 12345
+    assert result["name"] == "Caio Marcos"
+    assert result["email"] == "caio@example.com"
+    assert result["enterprise"] == MS_AUTH_PROFILE["enterprise"]
+    assert result["unit"] == MS_AUTH_PROFILE["unit"]
+    assert result["role"] == "analyst"
+    assert result["usecase"] == "report_generation"
+
+
+def test_list_user_memories_skips_expired_memories():
+    """Verify that list user memories skips memories whose is_valid() is false."""
+    users = StubUserService(user=USER, memories=[EXPIRED_MEMORY, MEMORY, FUTURE_MEMORY])
+    bind(users=users)
+
+    result = mongo_tools._list_user_memories(12345)
+
+    assert result == [
+        {"field": "preferred_language", "description": "pt-BR"},
+        {"field": "current_goal", "description": "active"},
+    ]
+
+
+def test_list_user_memory_fields_skips_expired_memories():
+    """Verify that list user memory fields skips expired memories."""
+    bind(users=StubUserService(user=USER, memories=[EXPIRED_MEMORY, MEMORY, FUTURE_MEMORY]))
+
+    assert mongo_tools._list_user_memory_fields(12345) == [
+        {"field": "preferred_language"},
+        {"field": "current_goal"},
+    ]
+
+
+def test_get_user_memory_by_field_skips_expired_memories():
+    """Verify that get user memory by field does not return an expired field."""
+    bind(users=StubUserService(user=USER, memories=[EXPIRED_MEMORY]))
+
+    with pytest.raises(ValueError, match="field"):
+        mongo_tools._get_user_memory_by_field(12345, "old_goal")
+
+
+def test_list_latest_improvement_plans_rejects_n_above_fifty():
+    """Verify that list latest improvement plans rejects n above 50."""
+    plans = StubPlanService(plans=[PLAN])
+    bind(plans=plans, users=StubUserService(user=COMPANY_USER))
+
+    with pytest.raises(ValueError, match="50"):
+        mongo_tools._list_latest_improvement_plans(12345, 51)
+
+    assert plans.calls == []

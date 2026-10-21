@@ -460,6 +460,14 @@ OPENAPI_TAGS = [
     },
 ]
 
+
+def development_openapi_urls() -> dict:
+    """Return FastAPI docs URLs when ENV is development; otherwise disable them."""
+    if os.environ.get("ENV", "").lower() == "development":
+        return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
 app = FastAPI(
     lifespan=lifespan,
     title="Aether AI Gateway",
@@ -470,6 +478,7 @@ app = FastAPI(
         "in the hub_metrics base."
     ),
     openapi_tags=OPENAPI_TAGS,
+    **development_openapi_urls(),
 )
 
 app.add_middleware(RequestLogMiddleware)

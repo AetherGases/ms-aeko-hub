@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from session.entity import Session, Message
+from session.entity import Session, Message, SendMessageResult
 from session.session import GuardrailRejectedError, IService
 from internal.shared import current_id_request, record_aeko_metrics
 
@@ -52,7 +52,7 @@ class Service(IService):
         aeko_messenger_factory,
         aeko_session_factory,
         user_repository: IUserRepository,
-    ) -> Message:
+    ) -> SendMessageResult:
         """Send a conversation turn using the cached window when present, then persist it."""
         try:
             is_new_session = not id_session
@@ -94,9 +94,10 @@ class Service(IService):
             self._refresh_window(id_session, id_user, session.messages, message)
 
             if is_new_session:
-                self.repository.update_name(id_session, _session_name_from(input))
+                session.name = _session_name_from(input)
+                self.repository.update_name(id_session, session.name)
 
-            return message
+            return SendMessageResult(message, session)
         except (ValueError, GuardrailRejectedError) as e:
             raise e
         except Exception as e:

@@ -8,12 +8,9 @@ PROFILE_MS_PATH = "/api/profile"
 
 _TOOL_PROFILE_KEYS = (
     "id",
-    "cpf",
     "email",
     "name",
-    "phone",
     "image",
-    "permissions",
     "enterprise",
     "unit",
 )
@@ -36,7 +33,7 @@ def get_profile(access_token: str) -> dict:
 
 
 def profile_tool_catalog(ms_payload: dict, *, role: str, usecase: str) -> dict[str, Any]:
-    """Merge the ms-auth profile with ChatGPT-specific fields stored in Mongo."""
+    """Merge the ms-auth profile with Mongo role and usecase, omitting CPF, phone, and permissions."""
 
     catalog = {key: ms_payload[key] for key in _TOOL_PROFILE_KEYS if key in ms_payload}
     catalog["role"] = role

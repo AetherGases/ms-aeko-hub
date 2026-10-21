@@ -5,6 +5,8 @@ from typing import Any
 
 import requests
 
+from cmd.api.acl.open_ai.identity import current_ms_auth_access_token
+
 CLOUDINARY_UPLOAD_SIGNATURE_PATH = "/api/cloudinary/upload-signature"
 
 
@@ -23,20 +25,6 @@ def _base_url() -> str:
         )
 
     return base_url
-
-
-def _api_key(api_key: str | None = None) -> str:
-    """Resolve the Cloudinary microservice credential from the argument or environment."""
-
-    if api_key is None:
-        api_key = os.environ.get("CLOUDINARY_MS_API_KEY", "")
-
-    if api_key == "":
-        raise RuntimeError(
-            "CLOUDINARY_MS_API_KEY is not set. Please set it in the environment or pass it to _request()."
-        )
-
-    return api_key
 
 
 def _timeout() -> float:
@@ -71,7 +59,7 @@ def _error_detail(response: Any) -> str:
 def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -> Any:
     """Send a Cloudinary microservice HTTP request and translate transport and status errors."""
 
-    headers = {"Authorization": f"Bearer {_api_key(api_key)}"}
+    headers = {"Authorization": f"Bearer {current_ms_auth_access_token()}"}
 
     try:
         response = requests.request(
@@ -98,7 +86,7 @@ def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -
 
 
 def get_upload_signature(file_type: str, *, api_key: str | None = None) -> dict:
-    """Return the Cloudinary upload signature payload for the given file type."""
+    """Return the Cloudinary upload signature for the file type as the bound ms-auth user."""
 
     url = f"{_base_url()}{CLOUDINARY_UPLOAD_SIGNATURE_PATH}"
     return _request("GET", url, api_key=api_key, params={"fileType": file_type})

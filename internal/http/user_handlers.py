@@ -5,9 +5,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from internal.http.ms_auth_authorization import ensure_external_user
 from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
+from internal.shared import Module, log_failure
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
 from user.user import IService
+
+UNEXPECTED_SERVER_ERROR = "Unexpected server error."
 
 router = APIRouter(tags=["Users"], dependencies=[Depends(require_ms_auth_principal)])
 
@@ -70,4 +73,5 @@ def get_user(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving user: {exc}") from exc
+        log_failure(Module.REQUEST, f"Error retrieving user: {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR) from exc

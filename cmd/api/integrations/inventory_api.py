@@ -5,6 +5,8 @@ from typing import Any
 
 import requests
 
+from cmd.api.acl.open_ai.identity import current_ms_auth_access_token
+
 INVENTORY_CREATE_PATH = "/api/inventories"
 
 
@@ -23,20 +25,6 @@ def _base_url() -> str:
         )
 
     return base_url
-
-
-def _api_key(api_key: str | None = None) -> str:
-    """Resolve the Inventory microservice credential from the argument or environment."""
-
-    if api_key is None:
-        api_key = os.environ.get("INVENTORY_MS_API_KEY", "")
-
-    if api_key == "":
-        raise RuntimeError(
-            "INVENTORY_MS_API_KEY is not set. Please set it in the environment or pass it to _request()."
-        )
-
-    return api_key
 
 
 def _timeout() -> float:
@@ -71,7 +59,7 @@ def _error_detail(response: Any) -> str:
 def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -> Any:
     """Send an Inventory microservice HTTP request and translate transport and status errors."""
 
-    headers = {"Authorization": f"Bearer {_api_key(api_key)}"}
+    headers = {"Authorization": f"Bearer {current_ms_auth_access_token()}"}
 
     try:
         response = requests.request(
@@ -100,7 +88,7 @@ def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -
 def create_inventory(
     name: str, file_name: str, path: str, *, api_key: str | None = None
 ) -> dict:
-    """Create an inventory record and return the microservice payload as-is."""
+    """Create an inventory record as the bound ms-auth user and return the payload as-is."""
 
     url = f"{_base_url()}{INVENTORY_CREATE_PATH}"
     return _request(

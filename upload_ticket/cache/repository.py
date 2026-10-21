@@ -50,15 +50,22 @@ class Repository:
 
     def get_created_ids(self, id_external_user: int) -> list[int]:
         """Return inventory ids created from upload tickets for a user."""
-        payload = self.redis.get(created_ids_key(id_external_user))
-        if payload is None:
-            return []
-
-        decoded = payload.decode() if isinstance(payload, bytes) else payload
-        return json.loads(decoded)
+        payload = self.redis.lrange(created_ids_key(id_external_user), 0, -1)
+        ids = []
+        for item in payload or []:
+            decoded = item.decode() if isinstance(item, bytes) else item
+            ids.append(int(decoded))
+        return ids
 
     def append_created_id(self, id_external_user: int, inventory_id: int) -> None:
-        """Append an inventory id to the created-inventory index for a user."""
-        ids = self.get_created_ids(id_external_user)
-        ids.append(inventory_id)
-        self.redis.set(created_ids_key(id_external_user), json.dumps(ids))
+        """Atomically append an inventory id and refresh the created-inventory TTL."""
+        key = created_ids_key(id_external_user)
+        pipeline = getattr(self.redis, "pipeline", None)
+        if callable(pipeline):
+            pipe = pipeline()
+            pipe.rpush(key, str(inventory_id))
+            pipe.expire(key, INVENTORY_UPLOAD_TICKET_TTL_SECONDS)
+            pipe.execute()
+            return
+        self.redis.rpush(key, str(inventory_id))
+        self.redis.expire(key, INVENTORY_UPLOAD_TICKET_TTL_SECONDS)

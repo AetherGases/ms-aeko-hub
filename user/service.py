@@ -34,9 +34,9 @@ class Service(IService):
         *,
         id_external_company: int | None = None,
     ) -> User:
-        """Return the stored user or create one with the supplied profile fields."""
+        """Return the stored user or create one, syncing company when supplied."""
         try:
-            return self.get_mongo_user(id_external_user)
+            user = self.get_mongo_user(id_external_user)
         except ValueError:
             try:
                 create_kwargs: dict = {}
@@ -50,6 +50,13 @@ class Service(IService):
                 )
             except Exception as e:
                 raise RuntimeError(f"Error creating user: {e}")
+        if id_external_company is None:
+            return user
+        self.repository.sync_sign_in_profile(
+            id_external_user,
+            id_external_company=id_external_company,
+        )
+        return self.get_mongo_user(id_external_user)
 
     def update_user_profile(
         self,

@@ -191,6 +191,16 @@ def test_set_window_persists_the_user_and_messages():
     assert window.messages[0].input == "one input"
 
 
+def test_set_window_sets_an_expiry_of_at_least_inactivity_seconds():
+    """Verify that set window stores the window with an expiry of at least inactivity seconds."""
+    redis = StubRedis()
+    repository = CacheRepository(redis)
+
+    repository.set_window(ID_SESSION, ID_USER, [build_message(0, "one")])
+
+    assert redis.expirations[window_key(ID_SESSION)] >= SESSION_INACTIVITY_MINUTES * 60
+
+
 def test_list_expired_windows_returns_sessions_without_an_activity_key():
     """Verify that list expired windows returns sessions without an activity key."""
     redis = StubRedis()

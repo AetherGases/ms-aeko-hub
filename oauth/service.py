@@ -191,3 +191,9 @@ class Service(IService):
             "token_type": "Bearer",
             "expires_in": expires_in,
         }
+
+    def revoke(self, access_token: str) -> None:
+        """Delete the hub-token session bound to the access token, if present."""
+        if self.sessions is None:
+            return
+        self.sessions.delete(access_token)

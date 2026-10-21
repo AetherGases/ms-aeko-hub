@@ -33,6 +33,17 @@ class Session:
         self.updated_at = updated_at
 
 
+class SendMessageResult:
+    """The persisted turn together with the session it belongs to."""
+
+    message: Message
+    session: Session
+
+    def __init__(self, message: Message, session: Session):
+        self.message = message
+        self.session = session
+
+
 class SessionWindow:
     """The trailing conversation turns that belong to one inactivity window."""
 

@@ -1,5 +1,7 @@
 """Expose HTTP endpoints for inventory upload ticket handshake."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
 
 from internal.http.ms_auth_authorization import ensure_external_user
@@ -10,6 +12,8 @@ from cmd.api.integrations.cloudinary_api import CloudinaryError
 from upload_ticket.cache.repository import Repository
 from upload_ticket.service import Service
 from upload_ticket.upload_ticket import IService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Inventory Upload"], dependencies=[Depends(require_ms_auth_principal)])
 
@@ -106,11 +110,12 @@ def get_upload_signature(
         _raise_for_value_error(exc)
     except CloudinaryError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except Exception as exc:
+    except Exception:
+        logger.exception("Error retrieving upload signature")
         raise HTTPException(
             status_code=500,
-            detail=f"Error retrieving upload signature: {exc}",
-        ) from exc
+            detail="Internal server error.",
+        ) from None
 
 
 @router.post(
@@ -161,8 +166,9 @@ def complete_upload(
         return CompleteResponse(ticket=updated.ticket, state=updated.state)
     except ValueError as exc:
         _raise_for_value_error(exc)
-    except Exception as exc:
+    except Exception:
+        logger.exception("Error confirming upload path")
         raise HTTPException(
             status_code=500,
-            detail=f"Error confirming upload path: {exc}",
-        ) from exc
+            detail="Internal server error.",
+        ) from None

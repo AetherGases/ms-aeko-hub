@@ -262,3 +262,58 @@ def test_post_complete_maps_not_found_to_404():
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Upload ticket not found."
+
+
+def test_post_complete_maps_arbitrary_path_to_400():
+    """Verify that an arbitrary confirm path is rejected with HTTP 400."""
+    service = StubUploadTicketService(
+        confirm_error=ValueError("Upload path is not allowed.")
+    )
+    response = build_client(service).post(
+        COMPLETE_ROUTE.format(id_external_user=USER_ID, ticket=TICKET_ID),
+        json={"path": "http://127.0.0.1/latest/meta-data/"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Upload path is not allowed."
+    assert service.confirm_calls == [
+        {
+            "id_external_user": USER_ID,
+            "ticket": TICKET_ID,
+            "path": "http://127.0.0.1/latest/meta-data/",
+        }
+    ]
+
+
+def test_get_signature_hides_unexpected_exception_text():
+    """Verify that an unexpected signature exception is not returned in the 500 body."""
+    service = StubUploadTicketService(
+        get_result=waiting_ticket(),
+        signature_error=RuntimeError("secret-db-password"),
+    )
+    response = build_client(service).get(
+        SIGNATURE_ROUTE.format(id_external_user=USER_ID, ticket=TICKET_ID)
+    )
+
+    assert response.status_code == 500
+    body = response.json()["detail"]
+    assert "secret-db-password" not in body
+    assert str(service.signature_error) not in body
+    assert body == "Internal server error."
+
+
+def test_post_complete_hides_unexpected_exception_text():
+    """Verify that an unexpected complete exception is not returned in the 500 body."""
+    service = StubUploadTicketService(
+        confirm_error=RuntimeError("secret-db-password"),
+    )
+    response = build_client(service).post(
+        COMPLETE_ROUTE.format(id_external_user=USER_ID, ticket=TICKET_ID),
+        json={"path": UPLOAD_PATH},
+    )
+
+    assert response.status_code == 500
+    body = response.json()["detail"]
+    assert "secret-db-password" not in body
+    assert str(service.confirm_error) not in body
+    assert body == "Internal server error."

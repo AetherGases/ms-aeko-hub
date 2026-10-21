@@ -1,6 +1,7 @@
 """Coordinate upload ticket lifecycle operations."""
 
 import secrets
+from urllib.parse import urlparse
 
 from cmd.api.integrations.cloudinary_api import get_upload_signature
 
@@ -12,6 +13,24 @@ from upload_ticket.entity import (
     UploadTicket,
 )
 from upload_ticket.upload_ticket import IService
+
+_CLOUDINARY_ALLOWED_HOSTS = frozenset({"res.cloudinary.com"})
+
+
+def _assert_allowed_cloudinary_path(path: str) -> None:
+    """Reject a storage path that is not an https Cloudinary CDN URL."""
+    parsed = urlparse(path)
+    if parsed.scheme != "https" or parsed.username or parsed.password:
+        raise ValueError("Upload path is not allowed.")
+    host = parsed.hostname
+    if not isinstance(host, str) or host.strip() == "":
+        raise ValueError("Upload path is not allowed.")
+    lowered = host.lower().rstrip(".")
+    if lowered not in _CLOUDINARY_ALLOWED_HOSTS:
+        raise ValueError("Upload path is not allowed.")
+    prefix = parsed.path or ""
+    if ".." in prefix or "/upload/" not in prefix:
+        raise ValueError("Upload path is not allowed.")
 
 
 class Service(IService):
@@ -60,6 +79,7 @@ class Service(IService):
         stored = self._load(id_external_user, ticket, allow_consumed=False)
         if stored.path is not None:
             raise ValueError("Upload ticket path is already set.")
+        _assert_allowed_cloudinary_path(path)
 
         updated = UploadTicket(
             ticket=stored.ticket,

@@ -1,5 +1,6 @@
 """Expose HTTP endpoints and response models for conversations and messages."""
 
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -23,8 +24,14 @@ from session.service import Service
 from session.session import GuardrailRejectedError, IService
 
 from cmd.memory_generator_worker.constants import REDIS_SCAN_COUNT, SESSION_INACTIVITY_MINUTES
+from internal.shared import Module, log_failure
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
+
+MESSAGE_INPUT_MAX_LENGTH = 8192
+SESSION_ID_MAX_LENGTH = 64
+_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+UNEXPECTED_SERVER_ERROR = "Unexpected server error."
 
 router = APIRouter(tags=["Sessions"], dependencies=[Depends(require_ms_auth_principal)])
 
@@ -49,6 +56,38 @@ def _positive_external_id(value, field_name: str) -> int:
 
     return parsed
 
+
+def _bounded_message_input(value) -> str:
+    """Accept a string up to MESSAGE_INPUT_MAX_LENGTH characters."""
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError("input must be a string.")
+    if len(value) > MESSAGE_INPUT_MAX_LENGTH:
+        raise ValueError("input exceeds the maximum length.")
+    return value
+
+
+def _optional_session_id(value):
+    """Accept a missing or empty session id, or a plausible identifier string."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError("id_session must be a string.")
+    stripped = value.strip()
+    if stripped == "":
+        return ""
+    if len(stripped) > SESSION_ID_MAX_LENGTH or not _SESSION_ID_PATTERN.fullmatch(stripped):
+        raise ValueError("id_session is invalid.")
+    return stripped
+
+
+def _internal_server_error(exc: Exception, operation_name: str) -> HTTPException:
+    """Log an unexpected failure and return a stable HTTP 500."""
+    log_failure(Module.REQUEST, f"{operation_name}: {type(exc).__name__}: {exc}")
+    return HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR)
+
+
 class SessionResponseData(BaseModel):
     id: str = Field(..., description="Internal session identifier.", json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"})
     name: str = Field(..., description="Human-readable session name.", json_schema_extra={"example": "Weekly emissions review"})
@@ -61,6 +100,11 @@ class MessageResponseData(BaseModel):
     submitted_at: datetime = Field(..., description="Timestamp when the message was submitted.", json_schema_extra={"example": "2026-07-26T14:30:00Z"})
 
     model_config = ConfigDict(frozen=True)
+
+
+class SendMessageResponseData(MessageResponseData):
+    id_session: str = Field(..., description="Internal session identifier of the conversation turn.", json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"})
+    session_name: str = Field(..., description="Human-readable session name after the turn was stored.", json_schema_extra={"example": "Weekly emissions review"})
 
 
 class UserCostResponseData(BaseModel):
@@ -167,14 +211,14 @@ def get_company_cost(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving company cost: {exc}") from exc
+        raise _internal_server_error(exc, "Error retrieving company cost") from exc
 
 
 @router.get(
-    "/ai/sessions/user/{id_user}",
+    "/ai/sessions/user/{id_external_user}",
     response_model=list[SessionResponseData],
     summary="List sessions for a user",
-    description="Returns all sessions associated with the internal user identifier.",
+    description="Returns all sessions associated with the external user identifier.",
     responses={
         200: {
             "description": "Sessions found for the user.",
@@ -189,6 +233,7 @@ def get_company_cost(
                 }
             },
         },
+        403: {"description": "The path user does not match the access token."},
         404: {"description": "No sessions found for the given user."},
         503: {"description": "Database connection is unavailable."},
         500: {"description": "Unexpected server error."},
@@ -196,19 +241,20 @@ def get_company_cost(
 )
 def get_user_sessions(
     principal: MsAuth,
-    id_user: str = Path(..., description="Internal user identifier.", examples=["65a8b3d6c0f8e1d7f4b2c010"]),
+    id_external_user: int = Path(..., description="External user identifier.", examples=[12345]),
     service: IService = Depends(get_session_service),
     user_repository: UserRepository = Depends(get_user_repository),
 ) -> list[SessionResponseData]:
     """Retrieve the sessions belonging to a user."""
-    ensure_internal_user(principal, id_user, user_repository)
+    ensure_external_user(principal, id_external_user)
     try:
-        sessions = service.get_user_sessions(id_user)
+        user = user_repository.get_user(id_external_user)
+        sessions = service.get_user_sessions(user.id)
         return [SessionResponseData(id=session.id, name=session.name) for session in sessions]
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving user sessions: {exc}") from exc
+        raise _internal_server_error(exc, "Error retrieving user sessions") from exc
 
 @router.get(
     "/ai/session/{id_session}/messages",
@@ -248,7 +294,7 @@ def get_session_messages(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving session messages: {exc}") from exc
+        raise _internal_server_error(exc, "Error retrieving session messages") from exc
     ensure_session_belongs_to_principal(principal, session, user_repository)
     try:
         messages = service.get_session_messages(id_session)
@@ -263,13 +309,14 @@ def get_session_messages(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving session messages: {exc}") from exc
+        raise _internal_server_error(exc, "Error retrieving session messages") from exc
 
 @router.post(
     "/ai/user/session/message",
     summary="Send a message to the AI session",
     description="Creates or continues a session message exchange using the current Aeko messenger instance.",
     tags=["Sessions"],
+    response_model=SendMessageResponseData,
     responses={
         200: {
             "description": "Message processed successfully.",
@@ -279,12 +326,14 @@ def get_session_messages(
                         "input_message": "Summarize this session.",
                         "output_message": "Here is the summary.",
                         "submitted_at": "2026-07-26T14:30:00Z",
+                        "id_session": "65a8b3d6c0f8e1d7f4b2c001",
+                        "session_name": "Weekly emissions review",
                     }
                 }
             },
         },
         400: {"description": "The request body is missing required fields or is invalid."},
-        502: {"description": "Neither the output guardrail nor the response checker approved a draft, so the run produced no answer."},
+        422: {"description": "Neither the output guardrail nor the response checker approved a draft, so the run produced no answer."},
         500: {"description": "The Aeko SDK is not initialized or an unexpected error occurred."},
     },
     openapi_extra={
@@ -337,10 +386,9 @@ async def send_message(
     """Send a conversation turn and persist the approved response with its run metrics."""
     body = await request.json()
 
-    id_session = body.get("id_session")
-    input = body.get("input", "")
-
     try:
+        id_session = _optional_session_id(body.get("id_session"))
+        input = _bounded_message_input(body.get("input", ""))
         id_external_user = _positive_external_id(body.get("id_external_user"), "id_external_user")
         id_external_company = _positive_external_id(
             body.get("id_external_company"),
@@ -366,7 +414,7 @@ async def send_message(
     )
 
     try:
-        message = await run_in_threadpool(
+        result = await run_in_threadpool(
             service.send_message,
             id_session,
             input,
@@ -375,14 +423,16 @@ async def send_message(
             aeko_session_factory,
             UserRepository(request.app.state.db),
         )
-        return MessageResponseData(
-            input_message=message.input,
-            output_message=message.output,
-            submitted_at=message.submitted_at,
+        return SendMessageResponseData(
+            input_message=result.message.input,
+            output_message=result.message.output,
+            submitted_at=result.message.submitted_at,
+            id_session=result.session.id,
+            session_name=result.session.name,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except GuardrailRejectedError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error sending message: {exc}") from exc
+        raise _internal_server_error(exc, "Error sending message") from exc

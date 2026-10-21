@@ -56,8 +56,15 @@ def test_ensure_internal_user_rejects_foreign_user():
 
 
 def test_ensure_plan_belongs_to_principal_rejects_foreign_company():
-    """Verify that ensure_plan_belongs_to_principal rejects another company's plan."""
+    """Verify that ensure_plan_belongs_to_principal hides another company's plan as not found."""
     plan = ImprovementPlan(id_external_company=91, defined_problem="p", method="m", reasoning="r")
     with pytest.raises(HTTPException) as exc:
         ensure_plan_belongs_to_principal(principal(id_external_company=90), plan)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code == 404
+    assert exc.value.status_code != 403
+
+
+def test_ensure_plan_belongs_to_principal_allows_matching_company():
+    """Verify that ensure_plan_belongs_to_principal accepts a plan for the token company."""
+    plan = ImprovementPlan(id_external_company=90, defined_problem="p", method="m", reasoning="r")
+    ensure_plan_belongs_to_principal(principal(id_external_company=90), plan)

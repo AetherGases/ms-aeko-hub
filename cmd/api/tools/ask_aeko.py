@@ -2,6 +2,7 @@
 
 from langchain_core.tools import Tool, create_schema_from_function
 
+from cmd.api.acl.open_ai.wrappers import wrap_chatgpt_tools
 from cmd.api.integrations.a2a.entity import (
     A2AMessage,
     A2A_RECIPIENT_AEKO,
@@ -31,14 +32,11 @@ def configure(
 
 
 def _assert_token_company(company_id: int) -> None:
-    """Ensure the company id matches the OAuth access token when MCP identity is bound."""
+    """Reject company ids when identity is unbound or does not match the token."""
 
-    try:
-        from cmd.api.acl.open_ai.identity import current_id_external_company
+    from cmd.api.acl.open_ai.identity import current_id_external_company
 
-        token_company = current_id_external_company()
-    except RuntimeError:
-        return
+    token_company = current_id_external_company()
     if company_id != token_company:
         raise ValueError("id_external_company does not match the OAuth token.")
 
@@ -81,13 +79,15 @@ def ask_aeko(
 
 
 def get_ask_aeko_tools() -> list[Tool]:
-    """Return the typed tool for sending questions to Aeko."""
+    """Return the typed tool that injects bound identity when sending questions to Aeko."""
 
-    return [
-        Tool(
-            name="ask_aeko",
-            description=ASK_AEKO_DESCRIPTION,
-            func=ask_aeko,
-            args_schema=create_schema_from_function("ask_aeko", ask_aeko),
-        )
-    ]
+    return wrap_chatgpt_tools(
+        [
+            Tool(
+                name="ask_aeko",
+                description=ASK_AEKO_DESCRIPTION,
+                func=ask_aeko,
+                args_schema=create_schema_from_function("ask_aeko", ask_aeko),
+            )
+        ]
+    )

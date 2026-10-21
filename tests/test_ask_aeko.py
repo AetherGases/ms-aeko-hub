@@ -33,7 +33,14 @@ class StubA2A:
 
 @pytest.fixture
 def configured_tool():
-    """Bind fresh A2A dependencies for each test."""
+    """Bind fresh A2A dependencies and conversation identity for each test."""
+
+    from cmd.api.acl.open_ai.identity import (
+        bind_id_external_company,
+        bind_id_external_user,
+        reset_id_external_company,
+        reset_id_external_user,
+    )
 
     a2a = StubA2A()
     messenger_factory = object()
@@ -43,8 +50,14 @@ def configured_tool():
         aeko_messenger_factory=messenger_factory,
         aeko_session_factory=session_factory,
     )
-    yield a2a, messenger_factory, session_factory
-    ask_aeko_tools.configure()
+    user_token = bind_id_external_user(12345)
+    company_token = bind_id_external_company(COMPANY_ID)
+    try:
+        yield a2a, messenger_factory, session_factory
+    finally:
+        reset_id_external_company(company_token)
+        reset_id_external_user(user_token)
+        ask_aeko_tools.configure()
 
 
 def test_ask_aeko_sends_message_and_returns_reply(configured_tool):
@@ -163,6 +176,13 @@ def test_ask_aeko_propagates_guardrail_rejection(configured_tool):
 def test_ask_aeko_raises_when_dependencies_are_unconfigured():
     """Raise when A2A or either required factory has not been bound."""
 
+    from cmd.api.acl.open_ai.identity import (
+        bind_id_external_company,
+        bind_id_external_user,
+        reset_id_external_company,
+        reset_id_external_user,
+    )
+
     a2a = StubA2A()
     dependencies = [
         {},
@@ -175,18 +195,43 @@ def test_ask_aeko_raises_when_dependencies_are_unconfigured():
             "aeko_session_factory": object(),
         },
     ]
-
-    for configured in dependencies:
-        ask_aeko_tools.configure(**configured)
-        with pytest.raises(RuntimeError):
-            ask_aeko_tools.ask_aeko(12345, COMPANY_ID, "Hello Aeko")
+    user_token = bind_id_external_user(12345)
+    company_token = bind_id_external_company(COMPANY_ID)
+    try:
+        for configured in dependencies:
+            ask_aeko_tools.configure(**configured)
+            with pytest.raises(RuntimeError):
+                ask_aeko_tools.ask_aeko(12345, COMPANY_ID, "Hello Aeko")
+    finally:
+        reset_id_external_company(company_token)
+        reset_id_external_user(user_token)
 
     assert a2a.calls == []
     ask_aeko_tools.configure()
 
 
+def test_ask_aeko_rejects_unbound_company():
+    """Verify that ask_aeko raises when company identity is unbound."""
+
+    a2a = StubA2A()
+    ask_aeko_tools.configure(
+        a2a=a2a,
+        aeko_messenger_factory=object(),
+        aeko_session_factory=object(),
+    )
+    try:
+        with pytest.raises(RuntimeError, match="ChatGPT company identity is not bound"):
+            ask_aeko_tools.ask_aeko(12345, COMPANY_ID, "Hello Aeko")
+    finally:
+        ask_aeko_tools.configure()
+
+    assert a2a.calls == []
+
+
 def test_get_ask_aeko_tools_exposes_typed_tool(configured_tool):
     """Expose one typed tool with the configured description and schema."""
+
+    from cmd.api.acl.open_ai.wrappers import _strip_identity_from_description
 
     tools = ask_aeko_tools.get_ask_aeko_tools()
 
@@ -194,10 +239,10 @@ def test_get_ask_aeko_tools_exposes_typed_tool(configured_tool):
     tool = tools[0]
     assert isinstance(tool, Tool)
     assert tool.name == "ask_aeko"
-    assert tool.description == tool_constants.ASK_AEKO_DESCRIPTION
+    assert tool.description == _strip_identity_from_description(
+        tool_constants.ASK_AEKO_DESCRIPTION
+    )
     assert set(tool.args) == {
-        "id_external_user",
-        "id_external_company",
         "input",
         "session_name",
     }

@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
-from session.entity import Message, Session
+from session.entity import Message, SendMessageResult, Session
 
 
 class GuardrailRejectedError(Exception):
@@ -71,7 +71,7 @@ class IService(ABC):
         aeko_messenger_factory,
         aeko_session_factory,
         user_repository,
-    ) -> Message:
+    ) -> SendMessageResult:
         """Send a conversation turn and persist the approved response with its run metrics."""
         pass
 

@@ -32,6 +32,37 @@ def oauth_env(monkeypatch):
     monkeypatch.setenv("OAUTH_CLIENT_ID", "chatgpt")
     monkeypatch.setenv("OAUTH_AUTHORIZATION_CODE_TTL_SECONDS", "300")
     monkeypatch.setenv("OAUTH_ACCESS_TOKEN_TTL_SECONDS", "3600")
+    monkeypatch.setenv(
+        "OAUTH_SESSION_ENCRYPTION_KEY",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    monkeypatch.setenv("OAUTH_AUTHORIZE_RATE_LIMIT_MAX", "5")
+    monkeypatch.setenv("OAUTH_AUTHORIZE_RATE_LIMIT_WINDOW_SECONDS", "900")
+
+
+class RateLimitRedis:
+    def __init__(self):
+        self.values = {}
+        self.expirations = {}
+
+    def set(self, key, value, ex=None, nx=False):
+        """Store a counter when the key is new, matching Redis SET NX EX."""
+        if nx and key in self.values:
+            return False
+        self.values[key] = value
+        if ex is not None:
+            self.expirations[key] = ex
+        return True
+
+    def incr(self, key):
+        """Increment a counter without changing its TTL."""
+        current = int(self.values.get(key, 0)) + 1
+        self.values[key] = current
+        return current
+
+    def get(self, key):
+        """Return the stored value for a key."""
+        return self.values.get(key)
 
 
 class StubOAuthService:
@@ -40,6 +71,7 @@ class StubOAuthService:
         self.exchange_error = exchange_error
         self.authorize_calls = []
         self.exchange_calls = []
+        self.revoke_calls = []
 
     def authorize(
         self,
@@ -89,6 +121,10 @@ class StubOAuthService:
             "expires_in": 3600,
         }
 
+    def revoke(self, access_token):
+        """Record a hub-token revoke call."""
+        self.revoke_calls.append(access_token)
+
 
 def authorize_query(**overrides):
     """Return ChatGPT authorize query parameters for the test."""
@@ -121,13 +157,14 @@ def authorize_form(**overrides):
     return body
 
 
-def build_client(service):
+def build_client(service, redis=None):
     """Build a TestClient that only includes the OAuth router and a stub service."""
     from internal.http import oauth_handlers
 
     app = FastAPI()
     app.include_router(oauth_handlers.router)
     app.state.oauth = service
+    app.state.redis = redis if redis is not None else RateLimitRedis()
     return TestClient(app, base_url=ISSUER)
 
 
@@ -285,3 +322,80 @@ def test_post_token_rejects_invalid_code(oauth_env):
         },
     )
     assert response.status_code == 400
+
+
+def test_post_authorize_returns_429_after_max_attempts(oauth_env):
+    """Verify that N+1 POST authorize attempts return HTTP 429."""
+    from oauth.constants import OAUTH_AUTHORIZE_RATE_LIMIT_MAX
+
+    service = StubOAuthService(authorize_error=ValueError("Sign in failed."))
+    redis = RateLimitRedis()
+    client = build_client(service, redis=redis)
+    for _ in range(OAUTH_AUTHORIZE_RATE_LIMIT_MAX):
+        response = client.post(
+            AUTHORIZE_PATH,
+            data=authorize_form(),
+            follow_redirects=False,
+        )
+        assert response.status_code == 401
+        assert "Sign in failed." in response.text
+    response = client.post(
+        AUTHORIZE_PATH,
+        data=authorize_form(),
+        follow_redirects=False,
+    )
+    assert response.status_code == 429
+    assert "Sign in failed." not in response.text
+    assert len(service.authorize_calls) == OAUTH_AUTHORIZE_RATE_LIMIT_MAX
+
+
+def test_post_authorize_second_hit_does_not_extend_rate_limit_ttl(oauth_env):
+    """Verify that a second POST authorize in the same window keeps the original TTL."""
+    from oauth.cache.key import rate_limit_email_key
+
+    service = StubOAuthService(authorize_error=ValueError("Sign in failed."))
+    redis = RateLimitRedis()
+    client = build_client(service, redis=redis)
+    client.post(AUTHORIZE_PATH, data=authorize_form(), follow_redirects=False)
+    email_key = rate_limit_email_key("caio@example.com")
+    redis.expirations[email_key] = 500
+    client.post(AUTHORIZE_PATH, data=authorize_form(), follow_redirects=False)
+    assert redis.expirations[email_key] == 500
+    assert int(redis.values[email_key]) == 2
+    assert [key for key in redis.values if key.startswith("oauth:ratelimit:ip:")] == []
+
+
+def test_post_authorize_rate_limit_is_per_email_not_ip(oauth_env):
+    """Verify that Sign-in rate limit is counted per email, not per IP."""
+    from oauth.constants import OAUTH_AUTHORIZE_RATE_LIMIT_MAX
+
+    service = StubOAuthService(authorize_error=ValueError("Sign in failed."))
+    redis = RateLimitRedis()
+    client = build_client(service, redis=redis)
+    for _ in range(OAUTH_AUTHORIZE_RATE_LIMIT_MAX):
+        response = client.post(
+            AUTHORIZE_PATH,
+            data=authorize_form(email="caio@example.com"),
+            follow_redirects=False,
+        )
+        assert response.status_code == 401
+    blocked = client.post(
+        AUTHORIZE_PATH,
+        data=authorize_form(email="caio@example.com"),
+        follow_redirects=False,
+    )
+    other = client.post(
+        AUTHORIZE_PATH,
+        data=authorize_form(email="other@example.com"),
+        follow_redirects=False,
+    )
+    assert blocked.status_code == 429
+    assert other.status_code == 401
+
+
+def test_post_revoke_deletes_the_session(oauth_env):
+    """Verify that POST revoke deletes the hub-token session."""
+    service = StubOAuthService()
+    response = build_client(service).post("/ai/oauth/revoke", data={"token": "hub.jwt"})
+    assert response.status_code == 200
+    assert service.revoke_calls == ["hub.jwt"]

@@ -83,4 +83,4 @@ class Service(IService):
             aeko_session_factory,
             self.user_repository,
         )
-        return result.output
+        return result.message.output

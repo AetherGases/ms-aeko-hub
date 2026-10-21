@@ -5,6 +5,10 @@ import json
 import pytest
 import requests
 
+from cmd.api.acl.open_ai.identity import (
+    bind_ms_auth_access_token,
+    reset_ms_auth_access_token,
+)
 from cmd.api.integrations import cloudinary_api
 
 
@@ -48,6 +52,14 @@ SIGNATURE_PAYLOAD = {
 }
 
 
+@pytest.fixture(autouse=True)
+def bound_ms_auth_token():
+    """Bind the signed-in user's ms-auth access token for Cloudinary calls."""
+    token = bind_ms_auth_access_token("ms-user-token")
+    yield "ms-user-token"
+    reset_ms_auth_access_token(token)
+
+
 @pytest.fixture
 def cloudinary_env(monkeypatch):
     """Set test Cloudinary microservice environment variables."""
@@ -75,10 +87,11 @@ def test_get_upload_signature_gets_the_upload_signature_endpoint(recorded_reques
 
 
 def test_get_upload_signature_authenticates_with_a_bearer_token(recorded_request):
-    """Verify that get upload signature authenticates with a bearer token."""
+    """Verify that get upload signature authenticates with the bound user Bearer."""
     cloudinary_api.get_upload_signature("XLSX")
 
-    assert recorded_request.calls[0]["headers"]["Authorization"] == "Bearer cloud-key"
+    assert recorded_request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
+    assert recorded_request.calls[0]["headers"]["Authorization"] != "Bearer cloud-key"
 
 
 def test_get_upload_signature_never_waits_forever(recorded_request):
@@ -93,19 +106,23 @@ def test_get_upload_signature_returns_the_ms_payload_as_is(recorded_request):
     assert cloudinary_api.get_upload_signature("XLSX") == SIGNATURE_PAYLOAD
 
 
-def test_get_upload_signature_prefers_an_explicit_api_key(monkeypatch, cloudinary_env):
-    """Verify that get upload signature prefers an explicit api key."""
+def test_get_upload_signature_uses_bound_user_bearer_not_service_api_key(
+    monkeypatch, cloudinary_env
+):
+    """Verify that get upload signature sends the user Bearer even when a service API key is set."""
     request = RecordingRequest(FakeResponse(payload=SIGNATURE_PAYLOAD))
     monkeypatch.setattr(cloudinary_api.requests, "request", request)
 
     cloudinary_api.get_upload_signature("IMAGE", api_key="explicit-key")
 
-    assert request.calls[0]["headers"]["Authorization"] == "Bearer explicit-key"
+    assert request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
+    assert request.calls[0]["headers"]["Authorization"] != "Bearer explicit-key"
+    assert request.calls[0]["headers"]["Authorization"] != "Bearer cloud-key"
 
 
 @pytest.mark.parametrize(
     "env_var",
-    ["CLOUDINARY_MS_BASE_URL", "CLOUDINARY_MS_API_KEY", "MS_HTTP_TIMEOUT"],
+    ["CLOUDINARY_MS_BASE_URL", "MS_HTTP_TIMEOUT"],
 )
 def test_get_upload_signature_raises_naming_a_missing_env_var(monkeypatch, cloudinary_env, env_var):
     """Verify that get upload signature raises naming a missing env var."""

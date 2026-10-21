@@ -123,6 +123,11 @@ class InMemoryUserRepository:
             raise ValueError(f"User with id {id_user} not found.")
         user.id_external_company = id_external_company
 
+    def sync_sign_in_profile(self, id_external_user, *, id_external_company):
+        """Persist the company id after Sign in on an existing in-memory user."""
+        user = self.get_user(id_external_user)
+        user.id_external_company = id_external_company
+
 
 class InMemorySessionRepository:
     def __init__(self, sessions=None, messages=None):
@@ -693,7 +698,7 @@ def test_journey_user_then_sessions_then_messages(live_app):
     assert user.status_code == 200
     assert user.json()["role"] == "analyst"
 
-    sessions = client.get("/ai/sessions/user/u1")
+    sessions = client.get("/ai/sessions/user/12345")
     assert sessions.status_code == 200
     assert sessions.json() == [{"id": "s1", "name": "Weekly emissions review"}]
 
@@ -714,7 +719,7 @@ def test_journey_unknown_user_is_404(live_app):
     client, _, _, _ = live_app
 
     assert client.get("/ai/user/99999").status_code == 403
-    assert client.get("/ai/sessions/user/ghost").status_code == 404
+    assert client.get("/ai/sessions/user/99999").status_code == 403
 
 
 SEND_MESSAGE_DEFAULTS = {
@@ -739,6 +744,8 @@ def test_send_message_completes_the_round_trip(live_app):
 
     assert response.status_code == 200, response.json()
     assert response.json()["output_message"] == "echo: What is scope 3?"
+    assert response.json()["id_session"] == "s1"
+    assert response.json()["session_name"] == "Weekly emissions review"
     assert len(session_repository.get_session_messages("s1")) == 2
 
 
@@ -795,17 +802,19 @@ def test_send_message_names_a_brand_new_session_after_its_first_message(live_app
     response = send(client, id_session="", input="How do I cut boiler emissions?")
 
     assert response.status_code == 200
+    assert response.json()["id_session"] == "session-2"
+    assert response.json()["session_name"] == "How do I cut boiler emissions?"
     assert session_repository.created_names == {"session-2": "How do I cut boiler emissions?"}
 
 
-def test_send_message_returns_502_when_no_reviewer_approved_a_draft(live_app, fake_sdk):
-    """Verify that send message returns 502 when no reviewer approved a draft."""
+def test_send_message_returns_422_when_no_reviewer_approved_a_draft(live_app, fake_sdk):
+    """Verify that send message returns 422 when no reviewer approved a draft."""
     client, _, _, session_repository = live_app
     fake_sdk.AekoMessenger.next_approved = False
 
     response = send(client, id_session="s1", input="hi")
 
-    assert response.status_code == 502
+    assert response.status_code == 422
     assert len(session_repository.get_session_messages("s1")) == 1
 
 
@@ -874,8 +883,8 @@ def test_a_report_records_what_the_analysis_cost(report_app):
     assert document["id_request"] == response.headers["x-request-id"]
 
 
-def test_a_report_without_a_plan_answers_502_and_stores_nothing(report_app, fake_sdk):
-    """Verify that a report without a plan answers 502 and stores nothing."""
+def test_a_report_without_a_plan_answers_422_and_stores_nothing(report_app, fake_sdk):
+    """Verify that a report without a plan answers 422 and stores nothing."""
     client, api_main, plan_repository = report_app
     fake_sdk.AekoInventoryAnalyzer.next_error = fake_sdk.MalformedAgentOutputError(
         "the coordinator never wrote the plan's three headings"
@@ -883,7 +892,7 @@ def test_a_report_without_a_plan_answers_502_and_stores_nothing(report_app, fake
 
     response = request_report(client)
 
-    assert response.status_code == 502
+    assert response.status_code == 422
     assert plan_repository.plans == []
 
     (document,) = stored_metrics(api_main)
@@ -907,7 +916,7 @@ def test_a_failed_reanalysis_keeps_the_current_plan(report_app, fake_sdk):
 
     response = request_report(client)
 
-    assert response.status_code == 502
+    assert response.status_code == 422
     assert plan_repository.plans == [existing]
     assert get_report(client).json()["defined_problem"] == "old problem"
 
@@ -1048,7 +1057,7 @@ def test_a_turn_no_reviewer_approved_is_still_recorded(live_app, fake_sdk):
 
     response = send(client, id_session="s1", input="hi")
 
-    assert response.status_code == 502
+    assert response.status_code == 422
     (document,) = stored_metrics(api_main)
     assert document["error_description"] == fake_sdk.REVIEW_FAILURE
 
@@ -1057,7 +1066,7 @@ def test_a_request_that_never_reached_the_sdk_records_no_run(live_app):
     """Verify that a request that never reached the sdk records no run."""
     client, api_main, _, _ = live_app
 
-    client.get("/ai/sessions/user/u1")
+    client.get("/ai/sessions/user/12345")
 
     assert stored_metrics(api_main) == []
 

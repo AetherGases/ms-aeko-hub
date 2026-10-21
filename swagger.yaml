@@ -132,23 +132,23 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 detail: 'Error retrieving company cost: ...'
-  /ai/sessions/user/{id_user}:
+  /ai/sessions/user/{id_external_user}:
     get:
       tags:
         - Sessions
       summary: List sessions for a user
-      description: Returns all sessions associated with the internal user identifier.
+      description: Returns all sessions associated with the external user identifier.
       operationId: listUserSessions
       security:
         - MsAuthBearer: []
       parameters:
-        - name: id_user
+        - name: id_external_user
           in: path
           required: true
-          description: Internal user identifier.
+          description: External user identifier.
           schema:
-            type: string
-          example: 65a8b3d6c0f8e1d7f4b2c010
+            type: integer
+          example: 12345
       responses:
         '200':
           description: Sessions found for the user.
@@ -163,6 +163,14 @@ paths:
                   name: Weekly emissions review
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The path user does not match the access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: id_external_user does not match the access token.
         '404':
           description: No sessions found for the given user.
           content:
@@ -269,11 +277,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MessageResponseData'
+                $ref: '#/components/schemas/SendMessageResponseData'
               example:
                 input_message: Summarize this session.
                 output_message: Here is the summary.
                 submitted_at: '2026-07-26T14:30:00Z'
+                id_session: 65a8b3d6c0f8e1d7f4b2c001
+                session_name: Weekly emissions review
         '401':
           $ref: '#/components/responses/Unauthorized'
         '400':
@@ -284,7 +294,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 detail: User is not allowed to access this session.
-        '502':
+        '422':
           description: Neither the output guardrail nor the response checker approved a draft, so the run produced no answer.
           content:
             application/json:
@@ -378,7 +388,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 detail: Improvement plan with id_external_inventory 502 not found.
-        '502':
+        '422':
           description: The analysis produced no plan or structured inventory in the expected shape.
           content:
             application/json:
@@ -574,6 +584,22 @@ components:
         - input_message
         - output_message
         - submitted_at
+    SendMessageResponseData:
+      allOf:
+        - $ref: '#/components/schemas/MessageResponseData'
+        - type: object
+          required:
+            - id_session
+            - session_name
+          properties:
+            id_session:
+              type: string
+              description: Internal session identifier of the conversation turn.
+              example: 65a8b3d6c0f8e1d7f4b2c001
+            session_name:
+              type: string
+              description: Human-readable session name after the turn was stored.
+              example: Weekly emissions review
     SendMessageRequest:
       type: object
       required:

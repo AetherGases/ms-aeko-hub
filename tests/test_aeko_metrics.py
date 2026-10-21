@@ -753,6 +753,12 @@ def test_company_cost_rejects_a_non_positive_window():
         Service(StubMetricsRepository()).company_cost(0, 90)
 
 
+def test_company_cost_rejects_a_window_above_ninety_days():
+    """Verify that company cost rejects n above 90 days."""
+    with pytest.raises(ValueError, match="n"):
+        Service(StubMetricsRepository()).company_cost(91, 90)
+
+
 def test_company_cost_rejects_a_non_positive_company():
     """Verify that company cost rejects a non positive company."""
     with pytest.raises(ValueError, match="id_external_company"):

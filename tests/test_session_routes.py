@@ -16,11 +16,11 @@ SEND_BODY = {
     "id_external_user": 12345,
     "id_external_company": 90,
 }
-from session.entity import Message, Session
+from session.entity import Message, SendMessageResult, Session
 from user.entity import User
 from session.session import GuardrailRejectedError
 
-SESSIONS_ROUTE = "/ai/sessions/user/{id_user}"
+SESSIONS_ROUTE = "/ai/sessions/user/{id_external_user}"
 MESSAGES_ROUTE = "/ai/session/{id_session}/messages"
 SEND_ROUTE = "/ai/user/session/message"
 
@@ -50,7 +50,7 @@ class StubSessionService:
     def send_message(self, id_session, input, id_user, aeko_messenger_factory,
                      aeko_session_factory, user_repository):
         """Record the conversation call and return or raise its scripted result."""
-        return self._run(
+        result = self._run(
             id_session=id_session,
             input=input,
             id_user=id_user,
@@ -58,6 +58,17 @@ class StubSessionService:
             aeko_session_factory=aeko_session_factory,
             user_repository=user_repository,
         )
+        if isinstance(result, Message):
+            return SendMessageResult(
+                message=result,
+                session=Session(
+                    id=id_session or "s1",
+                    id_user=id_user,
+                    name="Weekly emissions review",
+                    messages=[],
+                ),
+            )
+        return result
 
     def _validate_session_and_user_allowance(self, id_session, id_user):
         raise NotImplementedError
@@ -68,11 +79,18 @@ class StubUserRepository:
 
     def __init__(self, db=None, users_by_id=None):
         default = User(id="u1", id_external_user=12345, role="analyst", usecase="chat")
-        self.users_by_id = users_by_id or {"u1": default}
+        self.users_by_id = {"u1": default} if users_by_id is None else users_by_id
 
     def get_user_by_id(self, id_user):
         """Return the scripted user for an internal id, or None when unknown."""
         return self.users_by_id.get(id_user)
+
+    def get_user(self, id_external_user):
+        """Return the scripted user for an external id, or raise when unknown."""
+        for user in self.users_by_id.values():
+            if user.id_external_user == id_external_user:
+                return user
+        raise ValueError(f"User with id_external_user {id_external_user} not found.")
 
 
 class StubSessionRepository:
@@ -131,7 +149,7 @@ def test_get_user_sessions_returns_sessions():
             Session(id="65a8b3d6c0f8e1d7f4b2c002", id_user="u1", name="Scope 3 questions", messages=[]),
         ]
     )
-    response = build_client(service).get(SESSIONS_ROUTE.format(id_user="u1"))
+    response = build_client(service).get(SESSIONS_ROUTE.format(id_external_user=12345))
 
     assert response.status_code == 200
     assert response.json() == [
@@ -143,7 +161,7 @@ def test_get_user_sessions_returns_sessions():
 
 def test_get_user_sessions_returns_empty_list():
     """Verify that get user sessions returns empty list."""
-    response = build_client(StubSessionService(result=[])).get(SESSIONS_ROUTE.format(id_user="u1"))
+    response = build_client(StubSessionService(result=[])).get(SESSIONS_ROUTE.format(id_external_user=12345))
 
     assert response.status_code == 200
     assert response.json() == []
@@ -152,32 +170,45 @@ def test_get_user_sessions_returns_empty_list():
 def test_get_user_sessions_maps_value_error_to_404():
     """Verify that get user sessions maps value error to 404."""
     service = StubSessionService(error=ValueError("No sessions found."))
-    response = build_client(service).get(SESSIONS_ROUTE.format(id_user="u1"))
+    response = build_client(service).get(SESSIONS_ROUTE.format(id_external_user=12345))
 
     assert response.status_code == 404
     assert response.json()["detail"] == "No sessions found."
 
 
-def test_get_user_sessions_returns_404_when_internal_user_is_unknown():
-    """Verify that get user sessions returns 404 when the internal user does not exist."""
-    response = build_client(StubSessionService(result=[])).get(SESSIONS_ROUTE.format(id_user="ghost"))
+def test_get_user_sessions_returns_404_when_external_user_is_unknown():
+    """Verify that get user sessions returns 404 when the external user does not exist."""
+    response = build_client(
+        StubSessionService(result=[]),
+        user_repository=StubUserRepository(users_by_id={}),
+    ).get(SESSIONS_ROUTE.format(id_external_user=12345))
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "User not found."
+    assert response.json()["detail"] == "User with id_external_user 12345 not found."
+
+
+def test_get_user_sessions_returns_403_for_another_external_user():
+    """Verify that get user sessions rejects an external user that does not match the token."""
+    service = StubSessionService(result=[])
+    response = build_client(service).get(SESSIONS_ROUTE.format(id_external_user=99999))
+
+    assert response.status_code == 403
+    assert service.calls == []
 
 
 def test_get_user_sessions_maps_unexpected_error_to_500():
-    """Verify that get user sessions maps unexpected error to 500."""
+    """Verify that get user sessions maps unexpected error to a generic 500."""
     service = StubSessionService(error=RuntimeError("boom"))
-    response = build_client(service).get(SESSIONS_ROUTE.format(id_user="u1"))
+    response = build_client(service).get(SESSIONS_ROUTE.format(id_external_user=12345))
 
     assert response.status_code == 500
-    assert "boom" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "boom" not in response.text
 
 
 def test_get_user_sessions_returns_503_when_database_is_not_initialized():
     """Verify that get user sessions returns 503 when database is not initialized."""
-    response = build_client(service=None, db=None).get(SESSIONS_ROUTE.format(id_user="u1"))
+    response = build_client(service=None, db=None).get(SESSIONS_ROUTE.format(id_external_user=12345))
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Database is not initialized"
@@ -217,12 +248,13 @@ def test_get_session_messages_maps_value_error_to_400():
 
 
 def test_get_session_messages_maps_unexpected_error_to_500():
-    """Verify that get session messages maps unexpected error to 500."""
+    """Verify that get session messages maps unexpected error to a generic 500."""
     service = StubSessionService(error=RuntimeError("boom"))
     response = build_client(service).get(MESSAGES_ROUTE.format(id_session="s1"))
 
     assert response.status_code == 500
-    assert "boom" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "boom" not in response.text
 
 
 class StubUserService:
@@ -281,6 +313,8 @@ def test_send_message_returns_the_exchange(patched_user_repository):
         "input_message": "Summarize this session.",
         "output_message": "Here is the summary.",
         "submitted_at": SUBMITTED_AT.isoformat(),
+        "id_session": "s1",
+        "session_name": "Weekly emissions review",
     }
 
 
@@ -346,26 +380,27 @@ def test_send_message_maps_value_error_to_400(patched_user_repository):
     assert response.json()["detail"] == "Session limit reached."
 
 
-def test_send_message_maps_a_rejected_answer_to_502(patched_user_repository):
-    """Verify that send message maps a rejected answer to 502."""
+def test_send_message_maps_a_rejected_answer_to_422(patched_user_repository):
+    """Verify that send message maps a rejected answer to 422."""
     service = StubSessionService(
         error=GuardrailRejectedError("The output guardrail rejected every draft.")
     )
 
     response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
 
-    assert response.status_code == 502
+    assert response.status_code == 422
     assert response.json()["detail"] == "The output guardrail rejected every draft."
 
 
 def test_send_message_maps_unexpected_error_to_500(patched_user_repository):
-    """Verify that send message maps unexpected error to 500."""
+    """Verify that send message maps unexpected error to a generic 500."""
     service = StubSessionService(error=RuntimeError("boom"))
 
     response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
 
     assert response.status_code == 500
-    assert "boom" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "boom" not in response.text
 
 
 def test_send_message_returns_403_when_external_user_differs(patched_user_repository):
@@ -536,14 +571,15 @@ def test_the_sessions_cost_route_maps_value_error_to_400():
 
 
 def test_the_sessions_cost_route_maps_unexpected_error_to_500():
-    """Verify that the sessions cost route maps unexpected error to 500."""
+    """Verify that the sessions cost route maps unexpected error to a generic 500."""
     service = StubMetricsService(error=RuntimeError("boom"))
     response = build_cost_client(service).get(
         COST_ROUTE, params={"n": 7, "id_external_company": 90}
     )
 
     assert response.status_code == 500
-    assert "boom" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "boom" not in response.text
 
 
 def test_the_sessions_cost_route_returns_503_when_database_is_not_initialized():
@@ -595,7 +631,7 @@ def test_session_routes_return_401_without_bearer_token():
     app.state.db = "fake-db"
     client = TestClient(app)
 
-    assert client.get(SESSIONS_ROUTE.format(id_user="u1")).status_code == 401
+    assert client.get(SESSIONS_ROUTE.format(id_external_user=12345)).status_code == 401
     assert client.get(MESSAGES_ROUTE.format(id_session="s1")).status_code == 401
     assert client.get(COST_ROUTE, params={"n": 7, "id_external_company": 90}).status_code == 401
 
@@ -623,3 +659,83 @@ def test_send_message_runs_the_blocking_sdk_call_off_the_event_loop(patched_user
 
     assert response.status_code == 200
     assert service.ran_on_the_event_loop is False
+
+
+def test_send_message_syncs_company_when_the_mongo_user_already_exists(monkeypatch):
+    """Verify that send message persists the principal company on an existing Mongo user."""
+    existing = User(
+        id="u1",
+        id_external_user=12345,
+        role="analyst",
+        usecase="chat",
+        id_external_company=80,
+    )
+
+    class RecordingUserRepository(StubUserRepository):
+        def __init__(self, db=None, users_by_id=None):
+            super().__init__(db=db, users_by_id=users_by_id)
+            self.user = existing
+            self.sync_calls = []
+
+        def get_user(self, id_external_user):
+            """Return the stored user matching an external identifier."""
+            return self.user
+
+        def sync_sign_in_profile(self, id_external_user, *, id_external_company):
+            """Record the company sync that OAuth sign-in also performs."""
+            self.sync_calls.append((id_external_user, id_external_company))
+            self.user = User(
+                id=self.user.id,
+                id_external_user=self.user.id_external_user,
+                role=self.user.role,
+                usecase=self.user.usecase,
+                id_external_company=id_external_company,
+            )
+
+        def create_user(self, id_external_user, role, usecase, **kwargs):
+            """Fail if send_message tries to insert a user that already exists."""
+            raise AssertionError("existing user must not be created")
+
+    repository = RecordingUserRepository()
+    monkeypatch.setattr(session_handlers, "UserRepository", lambda db=None: repository)
+
+    service = StubSessionService(result=make_message())
+    response = build_client(service).post(SEND_ROUTE, json=SEND_BODY)
+
+    assert response.status_code == 200
+    assert repository.sync_calls == [(12345, 90)]
+    assert repository.user.id_external_company == 90
+
+
+def test_send_message_rejects_input_that_is_not_a_string(patched_user_repository):
+    """Verify that send message rejects a non-string input with 400."""
+    service = StubSessionService(result=make_message())
+
+    response = build_client(service).post(SEND_ROUTE, json={**SEND_BODY, "input": ["hi"]})
+
+    assert response.status_code == 400
+    assert service.calls == []
+
+
+def test_send_message_rejects_input_above_the_length_bound(patched_user_repository):
+    """Verify that send message rejects input longer than the configured bound."""
+    service = StubSessionService(result=make_message())
+    too_long = "x" * (session_handlers.MESSAGE_INPUT_MAX_LENGTH + 1)
+
+    response = build_client(service).post(SEND_ROUTE, json={**SEND_BODY, "input": too_long})
+
+    assert response.status_code == 400
+    assert service.calls == []
+
+
+def test_send_message_rejects_an_implausible_session_id(patched_user_repository):
+    """Verify that send message rejects an id_session that is not empty or a plausible id."""
+    service = StubSessionService(result=make_message())
+
+    response = build_client(service).post(
+        SEND_ROUTE,
+        json={**SEND_BODY, "id_session": "../not-a-session"},
+    )
+
+    assert response.status_code == 400
+    assert service.calls == []

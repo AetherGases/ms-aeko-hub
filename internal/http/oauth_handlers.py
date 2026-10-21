@@ -1,18 +1,25 @@
-"""Expose OAuth 2.1 discovery, ChatGPT Sign in, and token endpoints."""
+"""Expose OAuth 2.1 discovery, ChatGPT Sign in, token, and revoke endpoints."""
 
 from html import escape
 from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
-from oauth.constants import AUTHORIZE_PATH, MCP_PROTECTED_RESOURCE_WELL_KNOWN_PATH, PROTECTED_RESOURCE_WELL_KNOWN_PATH, TOKEN_PATH
+from oauth.constants import (
+    AUTHORIZE_PATH,
+    MCP_PROTECTED_RESOURCE_WELL_KNOWN_PATH,
+    PROTECTED_RESOURCE_WELL_KNOWN_PATH,
+    REVOKE_PATH,
+    TOKEN_PATH,
+)
 from oauth.discovery import (
     authorization_server_metadata_document,
     protected_resource_metadata_document,
     public_url,
 )
 from oauth.oauth import IService
+from oauth.rate_limit import authorize_rate_limit_exceeded
 from oauth.service import validate_authorize_parameters
 
 router = APIRouter()
@@ -159,6 +166,11 @@ def authorize_post(
     resource: str | None = Form(None),
 ):
     """Authenticate through the OAuth service and redirect to the client, or stay on Sign in."""
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client is None:
+        raise HTTPException(status_code=503, detail="OAuth is not initialized")
+    if authorize_rate_limit_exceeded(redis_client, email=email):
+        raise HTTPException(status_code=429, detail="Too many sign-in attempts.")
     sign_in_kwargs = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -213,3 +225,10 @@ def token_post(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(REVOKE_PATH, tags=["OAuth"])
+def revoke_post(request: Request, token: str = Form(...)):
+    """Delete the hub-token session bound to the supplied access token."""
+    get_oauth_service(request).revoke(token)
+    return Response(status_code=200)

@@ -139,13 +139,54 @@ class FakeRedis:
         self.expirations.pop(key, None)
         return value
 
-    def set(self, key, value, ex=None):
-        """Store a value and optionally mark it for expiry simulation."""
+    def set(self, key, value, ex=None, nx=False, xx=False, **kwargs):
+        """Store a value, honoring NX/XX and optional expiry like Redis SET."""
+        present = key in self.values
+        if nx and present:
+            return False
+        if xx and not present:
+            return False
         self.values[key] = value
         if ex is None:
             self.expirations.pop(key, None)
         else:
             self.expirations[key] = ex
+        return True
+
+    def incr(self, key):
+        """Increment an integer counter without changing its TTL."""
+        current = int(self.values.get(key, 0)) + 1
+        self.values[key] = str(current)
+        return current
+
+    def rpush(self, key, *values):
+        """Append values to a list stored at key."""
+        items = self.values.get(key)
+        if items is None or not isinstance(items, list):
+            items = [] if items is None else [items]
+            self.values[key] = items
+        items.extend(values)
+        return len(items)
+
+    def lrange(self, key, start, end):
+        """Return a slice of the list stored at key."""
+        items = self.values.get(key, [])
+        if not isinstance(items, list):
+            return []
+        if end == -1:
+            return list(items[start:])
+        return list(items[start : end + 1])
+
+    def expire(self, key, seconds):
+        """Attach a TTL to an existing key."""
+        if key not in self.values:
+            return False
+        self.expirations[key] = seconds
+        return True
+
+    def pipeline(self):
+        """Return a pipeline that applies queued Redis writes on execute."""
+        return _FakeRedisPipeline(self)
 
     def exists(self, key):
         """Return whether a key is present."""
@@ -166,6 +207,42 @@ class FakeRedis:
     def close(self):
         """Record closure of the simulated resource."""
         self.closed = True
+
+
+class _FakeRedisPipeline:
+    """Record writes and apply them when execute is called."""
+
+    def __init__(self, redis):
+        self.redis = redis
+        self.ops = []
+
+    def rpush(self, key, *values):
+        """Queue an rpush for execute."""
+        self.ops.append(("rpush", key, values))
+        return self
+
+    def expire(self, key, seconds):
+        """Queue an expire for execute."""
+        self.ops.append(("expire", key, seconds))
+        return self
+
+    def set(self, key, value, ex=None, nx=False, **kwargs):
+        """Queue a set for execute."""
+        self.ops.append(("set", key, value, ex, nx))
+        return self
+
+    def execute(self):
+        """Apply queued mutations in order."""
+        results = []
+        for op in self.ops:
+            if op[0] == "rpush":
+                results.append(self.redis.rpush(op[1], *op[2]))
+            elif op[0] == "expire":
+                results.append(self.redis.expire(op[1], op[2]))
+            elif op[0] == "set":
+                results.append(self.redis.set(op[1], op[2], ex=op[3], nx=op[4]))
+        self.ops = []
+        return results
 
 
 @pytest.fixture(autouse=True)

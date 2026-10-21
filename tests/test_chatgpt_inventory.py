@@ -1,5 +1,7 @@
 """Verify ChatGPT inventory ingest hides host files and Cloudinary fields."""
 
+import socket
+
 import pytest
 import requests
 
@@ -57,6 +59,31 @@ class StubCreateInventory:
         if self.error is not None:
             raise self.error
         return self.payload
+
+
+@pytest.fixture(autouse=True)
+def chatgpt_file_allowed_hosts(monkeypatch):
+    """Allow the ChatGPT test host and the production download host."""
+    monkeypatch.setenv(
+        "CHATGPT_FILE_ALLOWED_HOSTS",
+        "files.chatgpt.example,files.oaiusercontent.com",
+    )
+
+
+@pytest.fixture(autouse=True)
+def public_chatgpt_dns(monkeypatch):
+    """Resolve allowlisted ChatGPT hosts to a public address."""
+
+    def fake_getaddrinfo(host, port, *args, **kwargs):
+        """Return a public IPv4 address for allowlisted ChatGPT hosts."""
+        lowered = str(host).lower().rstrip(".")
+        if lowered in {"files.chatgpt.example", "files.oaiusercontent.com"}:
+            return [
+                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.2.3.4", port or 443))
+            ]
+        raise OSError("name resolution failed")
+
+    monkeypatch.setattr(inventory_tools.socket, "getaddrinfo", fake_getaddrinfo)
 
 
 @pytest.fixture
@@ -367,6 +394,115 @@ def test_fetch_chatgpt_file_rejects_oversized_body(monkeypatch):
     assert "https://files.chatgpt.example/tmp" not in message
     assert called
     assert called[0][0][0] == "https://files.chatgpt.example/tmp"
+    assert called[0][1].get("allow_redirects") is False
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "http://192.168.1.10/steal",
+        "https://169.254.169.254/latest/meta-data/",
+    ],
+)
+def test_fetch_chatgpt_file_does_not_follow_redirect_to_private_or_metadata(
+    monkeypatch, location
+):
+    """Verify that fetch chatgpt file does not follow a 302 to RFC1918 or metadata."""
+    fetched = []
+
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": location}
+        content = b""
+
+        def raise_for_status(self):
+            """A 302 is not an HTTP error for requests.raise_for_status."""
+            return None
+
+        def close(self):
+            """Release the scripted redirect response."""
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            """Yield no file bytes for a redirect response."""
+            if False:
+                yield b""
+
+    def fake_get(url, **kwargs):
+        """Record each GET and refuse to follow Location."""
+        fetched.append((url, kwargs.get("allow_redirects")))
+        if url == location:
+            raise AssertionError("redirect Location must not be fetched")
+        return RedirectResponse()
+
+    monkeypatch.setattr(inventory_tools.requests, "get", fake_get)
+
+    with pytest.raises(RuntimeError) as raised:
+        inventory_tools.fetch_chatgpt_file(
+            {
+                "download_url": "https://files.chatgpt.example/tmp",
+                "file_id": "file_abc",
+                "file_name": "inventorio.xlsx",
+            }
+        )
+
+    message = str(raised.value)
+    assert message == "Inventory submission failed. Try again later."
+    assert location not in message
+    assert fetched == [("https://files.chatgpt.example/tmp", False)]
+
+
+def test_fetch_chatgpt_file_denies_when_dns_raises_oserror(monkeypatch):
+    """Verify that fetch chatgpt file denies the download when DNS raises OSError."""
+    called = []
+    monkeypatch.setattr(
+        inventory_tools.socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("name resolution failed")),
+    )
+    monkeypatch.setattr(
+        inventory_tools.requests,
+        "get",
+        lambda *args, **kwargs: called.append((args, kwargs)) or None,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        inventory_tools.fetch_chatgpt_file(
+            {
+                "download_url": "https://files.chatgpt.example/tmp",
+                "file_id": "file_abc",
+                "file_name": "inventorio.xlsx",
+            }
+        )
+
+    message = str(raised.value)
+    assert message == "Inventory submission failed. Try again later."
+    assert "files.chatgpt.example" not in message
+    assert called == []
+
+
+def test_fetch_chatgpt_file_rejects_host_outside_allowlist(monkeypatch):
+    """Verify that fetch chatgpt file rejects a host outside the ChatGPT allowlist."""
+    called = []
+    monkeypatch.setattr(
+        inventory_tools.requests,
+        "get",
+        lambda *args, **kwargs: called.append((args, kwargs)) or None,
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        inventory_tools.fetch_chatgpt_file(
+            {
+                "download_url": "https://evil.example/tmp",
+                "file_id": "file_abc",
+                "file_name": "inventorio.xlsx",
+            }
+        )
+
+    message = str(raised.value)
+    assert message == "Inventory submission failed. Try again later."
+    assert "evil.example" not in message
+    assert called == []
 
 
 def test_fetch_chatgpt_file_maps_http_errors_without_leaking_the_url(monkeypatch):
@@ -461,6 +597,7 @@ def test_record_created_inventory_allows_get_inventory_analysis(services):
             """Return a plan for the ingested inventory."""
             return ImprovementPlan(
                 id_external_inventory=identifier,
+                id_external_company=90,
                 defined_problem="high scope 1",
                 method="replace boilers",
                 reasoning="combustion",
@@ -468,14 +605,48 @@ def test_record_created_inventory_allows_get_inventory_analysis(services):
 
     inventory_tools.configure(tickets=tickets, plans=Plans())
     tool = next(item for item in get_chatgpt_tools() if item.name == "get_inventory_analysis")
-    token = identity.bind_id_external_user(12345)
+    user_token = identity.bind_id_external_user(12345)
+    company_token = identity.bind_id_external_company(90)
     try:
         result = tool.func(id=1)
     finally:
-        identity.reset_id_external_user(token)
+        identity.reset_id_external_company(company_token)
+        identity.reset_id_external_user(user_token)
 
     assert result == {
         "defined_problem": "high scope 1",
         "solving_method": "replace boilers",
         "reasoning": "combustion",
     }
+
+
+def test_get_inventory_analysis_rejects_other_company_even_when_redis_has_id(services):
+    """Verify that analysis of another company's inventory is rejected even if Redis lists the id."""
+    from cmd.api.acl.open_ai import identity
+    from cmd.api.acl.open_ai.catalog import get_chatgpt_tools
+    from improvement_plan.entity import ImprovementPlan
+
+    tickets, _ = services
+    tickets.record_created_inventory(12345, 99)
+
+    class Plans:
+        def get_by_id_external_inventory(self, identifier):
+            """Return a plan owned by a different company."""
+            return ImprovementPlan(
+                id_external_inventory=identifier,
+                id_external_company=91,
+                defined_problem="foreign plan",
+                method="should not leak",
+                reasoning="other tenant",
+            )
+
+    inventory_tools.configure(tickets=tickets, plans=Plans())
+    tool = next(item for item in get_chatgpt_tools() if item.name == "get_inventory_analysis")
+    user_token = identity.bind_id_external_user(12345)
+    company_token = identity.bind_id_external_company(90)
+    try:
+        with pytest.raises(ValueError, match="inventory"):
+            tool.func(id=99)
+    finally:
+        identity.reset_id_external_company(company_token)
+        identity.reset_id_external_user(user_token)

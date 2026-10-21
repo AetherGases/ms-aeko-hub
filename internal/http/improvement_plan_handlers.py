@@ -17,8 +17,11 @@ from improvement_plan.entity import ExtractedInventory
 from improvement_plan.improvement_plan import IService, MalformedPlanError
 from improvement_plan.service import Service
 
+from internal.shared import Module, log_failure
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
+
+UNEXPECTED_SERVER_ERROR = "Unexpected server error."
 
 router = APIRouter(tags=["Reports"])
 
@@ -202,7 +205,7 @@ def _http_status_for_value_error(exc: ValueError) -> int:
                 "(for example, the improvement plan for the inventory)."
             ),
         },
-        502: {"description": "The analysis produced no plan or structured inventory in the expected shape."},
+        422: {"description": "The analysis produced no plan or structured inventory in the expected shape."},
         503: {"description": "Database connection is unavailable."},
         500: {"description": "The Aeko SDK is not initialized or an unexpected error occurred."},
     },
@@ -235,9 +238,10 @@ async def input_report(
     except ValueError as exc:
         raise HTTPException(status_code=_http_status_for_value_error(exc), detail=str(exc)) from exc
     except MalformedPlanError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error processing report: {exc}") from exc
+        log_failure(Module.REQUEST, f"Error processing report: {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR) from exc
 
 
 @router.get(
@@ -275,7 +279,8 @@ def get_report(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Error retrieving report: {exc}") from exc
+        log_failure(Module.REQUEST, f"Error retrieving report: {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR) from exc
     ensure_plan_belongs_to_principal(principal, plan)
     return ImprovementPlanReportData(
         defined_problem=plan.defined_problem,

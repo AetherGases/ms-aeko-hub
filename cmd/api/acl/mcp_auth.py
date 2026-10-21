@@ -1,8 +1,17 @@
-"""Challenge unsigned ChatGPT tool calls with HTTP 401 and WWW-Authenticate."""
+"""Challenge unsigned ChatGPT tool calls with HTTP 401 and WWW-Authenticate.
+
+Authenticated tools/call is default-deny: any name not in
+ANONYMOUS_CHATGPT_TOOL_NAMES requires a hub JWT, Redis session, and live
+ms-auth profile. Non-object JSON-RPC (arrays, batches, garbage) is rejected
+with 401 and never forwarded unsigned. MCP POST bodies larger than
+MCP_MAX_BODY_BYTES (1 MiB) are rejected with 413 without unbounded buffering.
+"""
 
 import json
 
-from cmd.api.acl.open_ai.catalog import AUTHENTICATED_CHATGPT_TOOL_NAMES
+from starlette.concurrency import run_in_threadpool
+
+from cmd.api.acl.open_ai.catalog import ANONYMOUS_CHATGPT_TOOL_NAMES
 from cmd.api.acl.ms_auth_security import resolve_ms_auth_access_token
 from cmd.api.acl.open_ai.identity import (
     attach_id_external_company,
@@ -22,8 +31,13 @@ from oauth.discovery import mcp_protected_resource_metadata_url
 from oauth.token import decode_access_token
 
 ERROR_DESCRIPTION = "You need to login to continue"
+MCP_MAX_BODY_BYTES = 1 * 1024 * 1024
 
 _sessions = None
+
+
+class _BodyTooLarge(Exception):
+    """Raised when an MCP request body exceeds MCP_MAX_BODY_BYTES."""
 
 
 def configure(*, sessions=None) -> None:
@@ -60,9 +74,24 @@ class _McpAuthApp:
             await self.app(scope, receive, send)
             return
 
-        body = await _read_body(receive)
+        declared = _content_length(scope)
+        if declared is not None and declared > MCP_MAX_BODY_BYTES:
+            await _drain_body(receive)
+            await _send_too_large(send)
+            return
+
+        try:
+            body = await _read_body(receive)
+        except _BodyTooLarge:
+            await _send_too_large(send)
+            return
+
         payload = _json_object(body)
         replay = _replay_body(body, receive)
+
+        if not isinstance(payload, dict):
+            await _send_unauthorized(send, None)
+            return
 
         if not _requires_chatgpt_identity(payload):
             await self.app(scope, replay, send)
@@ -78,11 +107,14 @@ class _McpAuthApp:
             document = _sessions.get(token)
             if not document:
                 raise ValueError("Missing hub session.")
-            principal = resolve_ms_auth_access_token(document["ms_auth_access_token"])
+            principal = await run_in_threadpool(
+                resolve_ms_auth_access_token,
+                document["ms_auth_access_token"],
+            )
             if principal.id_external_user != claims.id_external_user:
                 raise ValueError("Hub session identity mismatch.")
         except ValueError:
-            await _send_unauthorized(send, None if payload is None else payload.get("id"))
+            await _send_unauthorized(send, payload.get("id"))
             return
 
         attach_id_external_user(scope, principal.id_external_user)
@@ -103,12 +135,11 @@ class _McpAuthApp:
 
 
 def _requires_chatgpt_identity(payload) -> bool:
-    if not isinstance(payload, dict) or payload.get("method") != "tools/call":
+    if payload.get("method") != "tools/call":
         return False
     params = payload.get("params")
-    if not isinstance(params, dict):
-        return False
-    return params.get("name") in AUTHENTICATED_CHATGPT_TOOL_NAMES
+    name = params.get("name") if isinstance(params, dict) else None
+    return name not in ANONYMOUS_CHATGPT_TOOL_NAMES
 
 
 def _bearer_token(scope) -> str | None:
@@ -123,16 +154,43 @@ def _bearer_token(scope) -> str | None:
     return None
 
 
-async def _read_body(receive) -> bytes:
-    chunks: list[bytes] = []
+def _content_length(scope) -> int | None:
+    for key, value in scope.get("headers", []):
+        if key.lower() != b"content-length":
+            continue
+        try:
+            return int(value.decode("ascii"))
+        except (UnicodeDecodeError, ValueError):
+            return None
+    return None
+
+
+async def _drain_body(receive) -> None:
     more = True
     while more:
         message = await receive()
         if message["type"] == "http.request":
-            chunks.append(message.get("body", b""))
             more = bool(message.get("more_body", False))
         else:
             more = False
+
+
+async def _read_body(receive) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    more = True
+    while more:
+        message = await receive()
+        if message["type"] != "http.request":
+            break
+        chunk = message.get("body", b"")
+        total += len(chunk)
+        if total > MCP_MAX_BODY_BYTES:
+            if message.get("more_body"):
+                await _drain_body(receive)
+            raise _BodyTooLarge()
+        chunks.append(chunk)
+        more = bool(message.get("more_body", False))
     return b"".join(chunks)
 
 
@@ -156,6 +214,21 @@ def _json_object(body: bytes):
     except (UnicodeDecodeError, json.JSONDecodeError):
         return None
     return payload if isinstance(payload, dict) else None
+
+
+async def _send_too_large(send) -> None:
+    raw = b"Request body too large"
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 413,
+            "headers": [
+                (b"content-type", b"text/plain; charset=utf-8"),
+                (b"content-length", str(len(raw)).encode("ascii")),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": raw})
 
 
 async def _send_unauthorized(send, request_id) -> None:

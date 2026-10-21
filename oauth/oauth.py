@@ -32,3 +32,8 @@ class IService(ABC):
     ) -> dict:
         """Exchange a one-time authorization code for this API's access token."""
         pass
+
+    @abstractmethod
+    def revoke(self, access_token: str) -> None:
+        """Delete the hub-token session bound to the access token, if present."""
+        pass

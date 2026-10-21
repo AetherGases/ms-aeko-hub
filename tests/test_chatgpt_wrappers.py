@@ -87,6 +87,29 @@ def test_chatgpt_get_plan_hides_another_company(monkeypatch):
         identity.reset_id_external_user(token)
 
 
+def test_chatgpt_list_user_memories_uses_bound_user_not_another_id(monkeypatch):
+    """Verify that chatgpt list memories injects the bound user instead of an LLM id."""
+    from cmd.api.acl.open_ai import identity
+    from cmd.api.acl.open_ai.catalog import get_chatgpt_tools
+    from cmd.api.tools import mongo_tools
+
+    received = []
+
+    def fake(id_external_user):
+        """Record the injected user."""
+        received.append(id_external_user)
+        return []
+
+    monkeypatch.setattr(mongo_tools, "_list_user_memories", fake)
+    tool = next(t for t in get_chatgpt_tools() if t.name == "list_user_memories")
+    token = identity.bind_id_external_user(12345)
+    try:
+        tool.func()
+    finally:
+        identity.reset_id_external_user(token)
+    assert received == [12345]
+
+
 def test_chatgpt_get_plan_returns_the_same_catalog_for_the_same_company(monkeypatch):
     """Verify that chatgpt get plan returns the same catalog for the same company."""
     from cmd.api.acl.open_ai import identity

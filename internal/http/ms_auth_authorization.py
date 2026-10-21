@@ -59,8 +59,7 @@ def ensure_plan_belongs_to_principal(
     principal: MsAuthPrincipal,
     plan: ImprovementPlan,
 ) -> None:
-    """Reject plan reads when the stored company does not match the token."""
+    """Hide missing or foreign-company plans as not found so GET is not an existence oracle."""
     company = plan.id_external_company
-    if company is None:
+    if company is None or principal.id_external_company != company:
         raise HTTPException(status_code=404, detail="Improvement plan not found.")
-    ensure_company(principal, company)

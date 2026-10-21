@@ -18,7 +18,11 @@ _COMPANY_CHECKED_PLAN_TOOLS = {
 
 
 def wrap_chatgpt_tools(tools: list[Tool]) -> list[Tool]:
-    """Return ChatGPT tools with identity injected and Tavily-safe schemas."""
+    """Return tools with bound identity injected and other companies' plans hidden.
+
+    Aeko Mongo, session, memory, and plan getters reuse this wrapping so the LLM
+    cannot choose another conversation user's id_external_user.
+    """
 
     return [_wrap_chatgpt_tool(tool) for tool in tools]
 
@@ -120,7 +124,7 @@ def _wrap_chatgpt_tool(tool: Tool) -> Tool:
         inject_company=inject_company,
         check_company=check_company,
     )
-    
+
     return Tool(
         name=tool.name,
         description=_strip_identity_from_description(tool.description),

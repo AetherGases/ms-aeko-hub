@@ -149,9 +149,23 @@ def test_profile_tool_catalog_merges_role_and_usecase():
 
     catalog = profile_tool_catalog(PROFILE_PAYLOAD, role="analyst", usecase="inventory")
     assert catalog["id"] == 1
+    assert catalog["name"] == PROFILE_PAYLOAD["name"]
+    assert catalog["email"] == PROFILE_PAYLOAD["email"]
     assert catalog["enterprise"] == PROFILE_PAYLOAD["enterprise"]
+    assert catalog["unit"] == PROFILE_PAYLOAD["unit"]
     assert catalog["role"] == "analyst"
     assert catalog["usecase"] == "inventory"
+
+
+def test_profile_tool_catalog_omits_cpf_phone_and_permissions():
+    """Verify that the ChatGPT profile catalog omits cpf, phone, and permissions."""
+
+    from cmd.api.integrations.profile_api import profile_tool_catalog
+
+    catalog = profile_tool_catalog(PROFILE_PAYLOAD, role="analyst", usecase="inventory")
+    assert "cpf" not in catalog
+    assert "phone" not in catalog
+    assert "permissions" not in catalog
 
 
 @pytest.mark.parametrize("env_var", ["AUTH_MS_BASE_URL", "MS_HTTP_TIMEOUT"])

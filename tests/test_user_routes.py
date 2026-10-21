@@ -95,12 +95,13 @@ def test_get_user_maps_value_error_to_404():
 
 
 def test_get_user_maps_unexpected_error_to_500():
-    """Verify that get user maps unexpected error to 500."""
+    """Verify that get user maps unexpected error to a generic 500."""
     service = StubUserService(error=RuntimeError("mongo exploded"))
     response = build_client(service, id_external_user=1).get(ROUTE.format(id_external_user=1))
 
     assert response.status_code == 500
-    assert "mongo exploded" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "mongo exploded" not in response.text
 
 
 def test_get_user_returns_403_when_path_user_does_not_match_token():

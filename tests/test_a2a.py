@@ -6,7 +6,7 @@ import pytest
 
 from cmd.api.integrations.a2a.entity import A2AMessage, A2A_RECIPIENT_AEKO, A2A_SENDER_CHATGPT
 from cmd.api.integrations.a2a.service import Service
-from session.entity import Message, Session
+from session.entity import Message, SendMessageResult, Session
 from session.session import GuardrailRejectedError
 from user.entity import User
 
@@ -83,10 +83,18 @@ class StubSessionService:
                 "user_repository": user_repository,
             }
         )
-        return Message(
-            input=input,
-            output="Aeko reply",
-            submitted_at=datetime(2026, 10, 4, 12, 0, 0),
+        return SendMessageResult(
+            Message(
+                input=input,
+                output="Aeko reply",
+                submitted_at=datetime(2026, 10, 4, 12, 0, 0),
+            ),
+            Session(
+                id=id_session or "s-new",
+                id_user=id_user,
+                name="Weekly emissions review",
+                messages=[],
+            ),
         )
 
 

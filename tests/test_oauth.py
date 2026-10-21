@@ -40,6 +40,11 @@ class InMemorySessions:
         """Return the stored session document, if present."""
         return self._items.get(access_token)
 
+    def delete(self, access_token):
+        """Remove the stored hub-token session, if present."""
+        self._items.pop(access_token, None)
+        self.ttls.pop(access_token, None)
+
 
 def s256(verifier: str) -> str:
     """Return the S256 code challenge for a PKCE verifier."""
@@ -75,6 +80,12 @@ def oauth_env(monkeypatch):
     monkeypatch.setenv("OAUTH_CLIENT_ID", "chatgpt")
     monkeypatch.setenv("OAUTH_AUTHORIZATION_CODE_TTL_SECONDS", "300")
     monkeypatch.setenv("OAUTH_ACCESS_TOKEN_TTL_SECONDS", "3600")
+    monkeypatch.setenv(
+        "OAUTH_SESSION_ENCRYPTION_KEY",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    monkeypatch.setenv("OAUTH_AUTHORIZE_RATE_LIMIT_MAX", "5")
+    monkeypatch.setenv("OAUTH_AUTHORIZE_RATE_LIMIT_WINDOW_SECONDS", "900")
 
 
 def authenticated_login(email, password):
@@ -535,7 +546,7 @@ def test_session_repository_saves_and_gets_by_access_token():
 
 
 def test_redis_repository_saves_and_pops_authorization_codes(oauth_env):
-    """Verify that Redis stores authorization codes under oauth:code:{code} with the TTL."""
+    """Verify that Redis stores authorization codes under the SHA-256 code key with the TTL."""
     from oauth.cache.key import code_key
     from oauth.cache.repository import Repository
     from oauth.constants import OAUTH_AUTHORIZATION_CODE_TTL_SECONDS
@@ -550,11 +561,134 @@ def test_redis_repository_saves_and_pops_authorization_codes(oauth_env):
         "code_challenge_method": "S256",
     }
     repository.save("opaque-code", document, OAUTH_AUTHORIZATION_CODE_TTL_SECONDS)
+    digest = hashlib.sha256(b"opaque-code").hexdigest()
     key = code_key("opaque-code")
-    assert key == "oauth:code:opaque-code"
+    assert key == f"oauth:code:{digest}"
+    assert "oauth:code:opaque-code" not in redis.values
     assert redis.expirations[key] == 300
     assert repository.pop("opaque-code") == document
     assert repository.pop("opaque-code") is None
+
+
+def test_redis_repository_pops_authorization_code_from_hashed_key(oauth_env):
+    """Verify that pop consumes the authorization code stored under its SHA-256 Redis key."""
+    from oauth.cache.key import code_key
+    from oauth.cache.repository import Repository
+
+    redis = FakeRedis()
+    repository = Repository(redis)
+    document = {
+        "id_external_user": 1,
+        "client_id": "chatgpt",
+        "redirect_uri": CHATGPT_REDIRECT,
+        "code_challenge": s256(VERIFIER),
+        "code_challenge_method": "S256",
+    }
+    repository.save("opaque-code", document, 300)
+    assert code_key("opaque-code") in redis.values
+    assert "oauth:code:opaque-code" not in redis.values
+    assert repository.pop("opaque-code") == document
+    assert code_key("opaque-code") not in redis.values
+    assert repository.pop("opaque-code") is None
+
+
+def test_session_repository_redis_value_omits_plaintext_ms_auth_token():
+    """Verify that the Redis session value does not contain the plaintext ms-auth token."""
+    from oauth.cache.key import session_key
+    from oauth.cache.session_repository import Repository
+
+    redis = FakeRedis()
+    repository = Repository(redis)
+    token = "ms-access-plaintext-secret"
+    repository.save(
+        "hub.jwt",
+        {
+            "ms_auth_access_token": token,
+            "id_external_user": 7,
+            "id_external_company": 90,
+        },
+        1800,
+    )
+    raw = redis.values[session_key("hub.jwt")]
+    decoded = raw.decode() if isinstance(raw, bytes) else raw
+    assert token not in decoded
+    assert "Bearer" not in decoded
+    stored = repository.get("hub.jwt")
+    assert stored["ms_auth_access_token"] == token
+    assert stored["id_external_user"] == 7
+    assert stored["id_external_company"] == 90
+
+
+def test_session_repository_delete_removes_hub_session():
+    """Verify that delete removes the hub-token session so get returns empty."""
+    from oauth.cache.session_repository import Repository
+
+    redis = FakeRedis()
+    repository = Repository(redis)
+    repository.save(
+        "hub.jwt",
+        {
+            "ms_auth_access_token": "ms-access",
+            "id_external_user": 7,
+            "id_external_company": 90,
+        },
+        1800,
+    )
+    repository.delete("hub.jwt")
+    assert repository.get("hub.jwt") is None
+
+
+def test_revoke_clears_the_hub_session(monkeypatch, oauth_env):
+    """Verify that after revoke, session get is empty."""
+    from oauth.service import Service
+
+    stub_sign_in(monkeypatch)
+    sessions = InMemorySessions()
+    service = Service(InMemoryCodes(), sessions=sessions)
+    location = authorize(service)
+    code = parse_qs(urlparse(location).query)["code"][0]
+    body = service.exchange(
+        code,
+        client_id="chatgpt",
+        redirect_uri=CHATGPT_REDIRECT,
+        code_verifier=VERIFIER,
+    )
+    access_token = body["access_token"]
+    assert sessions.get(access_token) is not None
+    service.revoke(access_token)
+    assert sessions.get(access_token) is None
+
+
+def test_rate_limit_record_attempt_does_not_reset_ttl_on_second_hit():
+    """Verify that a second rate-limit hit in the same window keeps the original TTL."""
+    from oauth.rate_limit import record_attempt
+
+    redis = _RateLimitRedis()
+    assert record_attempt(redis, "oauth:ratelimit:email:caio@example.com", 900) == 1
+    redis.expirations["oauth:ratelimit:email:caio@example.com"] = 500
+    assert record_attempt(redis, "oauth:ratelimit:email:caio@example.com", 900) == 2
+    assert redis.expirations["oauth:ratelimit:email:caio@example.com"] == 500
+
+
+class _RateLimitRedis:
+    def __init__(self):
+        self.values = {}
+        self.expirations = {}
+
+    def set(self, key, value, ex=None, nx=False):
+        """Store a counter when the key is new, matching Redis SET NX EX."""
+        if nx and key in self.values:
+            return False
+        self.values[key] = value
+        if ex is not None:
+            self.expirations[key] = ex
+        return True
+
+    def incr(self, key):
+        """Increment a counter without changing its TTL."""
+        current = int(self.values.get(key, 0)) + 1
+        self.values[key] = current
+        return current
 
 
 def test_redis_repository_pop_uses_atomic_getdel(oauth_env):

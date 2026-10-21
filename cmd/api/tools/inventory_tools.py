@@ -11,7 +11,10 @@ import requests
 from langchain_core.tools import Tool, create_schema_from_function
 from pydantic import BaseModel
 
-from cmd.api.acl.open_ai.identity import current_id_external_user
+from cmd.api.acl.open_ai.identity import (
+    current_id_external_company,
+    current_id_external_user,
+)
 from cmd.api.integrations.cloudinary_api import CloudinaryError, get_upload_signature
 from cmd.api.integrations.cloudinary_upload import upload_signed_file
 from cmd.api.integrations.inventory_api import InventoryError
@@ -111,6 +114,21 @@ def _blocked_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
+def _chatgpt_allowed_hosts() -> set[str]:
+    """Return the ChatGPT download host allowlist from the environment."""
+
+    value = os.environ.get("CHATGPT_FILE_ALLOWED_HOSTS", "")
+    if value == "":
+        raise RuntimeError(
+            "CHATGPT_FILE_ALLOWED_HOSTS is not set. Please set it in the environment."
+        )
+    return {
+        part.strip().lower().rstrip(".")
+        for part in value.split(",")
+        if part.strip()
+    }
+
+
 def _assert_safe_chatgpt_download_url(download_url: str) -> None:
     parsed = urlparse(download_url)
     if parsed.scheme != "https":
@@ -119,6 +137,8 @@ def _assert_safe_chatgpt_download_url(download_url: str) -> None:
     if not isinstance(host, str) or host.strip() == "":
         _inventory_submission_failed()
     lowered = host.lower().rstrip(".")
+    if lowered not in _chatgpt_allowed_hosts():
+        _inventory_submission_failed()
     if lowered in {"localhost", "127.0.0.1", "::1"}:
         _inventory_submission_failed()
     try:
@@ -130,12 +150,14 @@ def _assert_safe_chatgpt_download_url(download_url: str) -> None:
     try:
         infos = socket.getaddrinfo(host, parsed.port or 443, type=socket.SOCK_STREAM)
     except OSError:
-        return
+        _inventory_submission_failed()
+    if not infos:
+        _inventory_submission_failed()
     for info in infos:
         try:
             resolved = ipaddress.ip_address(info[4][0])
         except (ValueError, IndexError):
-            continue
+            _inventory_submission_failed()
         if _blocked_ip(resolved):
             _inventory_submission_failed()
 
@@ -168,7 +190,7 @@ def _read_chatgpt_file_bytes(response, max_bytes: int) -> bytes:
 
 
 def fetch_chatgpt_file(file: dict) -> tuple[bytes, str]:
-    """Download a ChatGPT-hosted file and return its bytes and name."""
+    """Download an allowlisted ChatGPT-hosted file and return its bytes and name."""
 
     payload = _host_file(file)
     download_url = payload.get("download_url")
@@ -179,7 +201,17 @@ def fetch_chatgpt_file(file: dict) -> tuple[bytes, str]:
         raise ValueError("file.file_id is required.")
     _assert_safe_chatgpt_download_url(download_url)
     try:
-        response = requests.get(download_url, timeout=_timeout(), stream=True)
+        response = requests.get(
+            download_url,
+            timeout=_timeout(),
+            stream=True,
+            allow_redirects=False,
+        )
+        if 300 <= response.status_code < 400:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+            _inventory_submission_failed()
         response.raise_for_status()
         body = _read_chatgpt_file_bytes(response, _max_chatgpt_file_bytes())
     except requests.RequestException:
@@ -291,7 +323,7 @@ def _get_inventory_analysis(
     id_external_user: int,
     id: int,
 ) -> dict[str, Any]:
-    """Return a created inventory's analysis or its processing state."""
+    """Return analysis for an inventory owned by the bound user's company, or PROCESSING."""
 
     identifier = _positive_int(id_external_user, "id_external_user")
     inventory_id = _positive_int(id, "id")
@@ -302,6 +334,13 @@ def _get_inventory_analysis(
         plan = _plans().get_by_id_external_inventory(inventory_id)
     except ValueError:
         return {"status": "PROCESSING"}
+
+    try:
+        bound_company = current_id_external_company()
+    except RuntimeError:
+        bound_company = None
+    if bound_company is not None and plan.id_external_company != bound_company:
+        raise ValueError("inventory was not created through this user's upload tickets.")
 
     return {
         "defined_problem": plan.defined_problem,

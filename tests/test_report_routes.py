@@ -199,28 +199,29 @@ def test_input_report_still_maps_other_not_found_value_errors_to_404(patched_use
     )
 
 
-def test_input_report_maps_a_plan_that_never_took_shape_to_502(patched_user_service):
-    """Verify that input report maps a plan that never took shape to 502."""
+def test_input_report_maps_a_plan_that_never_took_shape_to_422(patched_user_service):
+    """Verify that input report maps a plan that never took shape to 422."""
     service = StubReportService(
         error=MalformedPlanError("The analysis produced no plan in the shape a report is stored in.")
     )
 
     response = post_report(build_client(service), REPORT_BODY)
 
-    assert response.status_code == 502
+    assert response.status_code == 422
     assert response.json()["detail"] == (
         "The analysis produced no plan in the shape a report is stored in."
     )
 
 
 def test_input_report_maps_unexpected_error_to_500(patched_user_service):
-    """Verify that input report maps unexpected error to 500."""
+    """Verify that input report maps unexpected error to a generic 500."""
     service = StubReportService(error=RuntimeError("analyzer down"))
 
     response = post_report(build_client(service), REPORT_BODY)
 
     assert response.status_code == 500
-    assert "analyzer down" in response.json()["detail"]
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "analyzer down" not in response.text
 
 
 def test_input_report_returns_503_when_database_is_not_initialized():
@@ -327,8 +328,8 @@ def test_input_report_returns_401_for_invalid_authentication_key(patched_user_se
     assert response.json()["detail"] == "Invalid authentication key."
 
 
-def test_get_report_returns_403_when_plan_company_does_not_match_token(patched_user_service):
-    """Verify that get report returns 403 when the stored plan belongs to another company."""
+def test_get_report_returns_404_when_plan_company_does_not_match_token(patched_user_service):
+    """Verify that get report returns 404 when the stored plan belongs to another company."""
     plan = ImprovementPlan(
         id_external_inventory=502,
         id_external_company=99,
@@ -338,7 +339,8 @@ def test_get_report_returns_403_when_plan_company_does_not_match_token(patched_u
     )
     response = build_client(StubReportService(plan=plan)).get(GET_ROUTE.format(id_external_inventory=502))
 
-    assert response.status_code == 403
+    assert response.status_code == 404
+    assert response.status_code != 403
 
 
 def test_get_report_returns_the_textual_plan(patched_user_service):
@@ -387,3 +389,14 @@ def test_get_report_does_not_require_the_sdk(patched_user_service):
     )
 
     assert response.status_code == 200
+
+
+def test_get_report_maps_unexpected_error_to_500(patched_user_service):
+    """Verify that get report maps unexpected error to a generic 500."""
+    service = StubReportService(get_error=RuntimeError("secret-plan-error"))
+
+    response = build_client(service).get(GET_ROUTE.format(id_external_inventory=502))
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Unexpected server error."
+    assert "secret-plan-error" not in response.text
