@@ -1,6 +1,5 @@
 """Expose HTTP endpoints and response models for conversations and messages."""
 
-import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
@@ -29,8 +28,6 @@ from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
 
 MESSAGE_INPUT_MAX_LENGTH = 8192
-SESSION_ID_MAX_LENGTH = 64
-_SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 UNEXPECTED_SERVER_ERROR = "Unexpected server error."
 
 router = APIRouter(tags=["Sessions"], dependencies=[Depends(require_ms_auth_principal)])
@@ -66,20 +63,6 @@ def _bounded_message_input(value) -> str:
     if len(value) > MESSAGE_INPUT_MAX_LENGTH:
         raise ValueError("input exceeds the maximum length.")
     return value
-
-
-def _optional_session_id(value):
-    """Accept a missing or empty session id, or a plausible identifier string."""
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError("id_session must be a string.")
-    stripped = value.strip()
-    if stripped == "":
-        return ""
-    if len(stripped) > SESSION_ID_MAX_LENGTH or not _SESSION_ID_PATTERN.fullmatch(stripped):
-        raise ValueError("id_session is invalid.")
-    return stripped
 
 
 def _internal_server_error(exc: Exception, operation_name: str) -> HTTPException:
@@ -387,7 +370,9 @@ async def send_message(
     body = await request.json()
 
     try:
-        id_session = _optional_session_id(body.get("id_session"))
+        id_session = body.get("id_session")
+        if id_session is not None and not isinstance(id_session, str):
+            raise ValueError("id_session must be a string.")
         input = _bounded_message_input(body.get("input", ""))
         id_external_user = _positive_external_id(body.get("id_external_user"), "id_external_user")
         id_external_company = _positive_external_id(

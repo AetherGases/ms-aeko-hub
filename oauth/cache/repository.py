@@ -3,6 +3,7 @@
 import json
 
 from oauth.cache.key import code_key
+from oauth.cache.secret import open_ms_auth_access_token, seal_ms_auth_access_token
 
 
 class Repository:
@@ -11,7 +12,8 @@ class Repository:
 
     def save(self, code, document, ttl) -> None:
         """Persist an authorization code document with the supplied TTL."""
-        self.redis.set(code_key(code), json.dumps(document), ex=ttl)
+        stored = seal_ms_auth_access_token(document)
+        self.redis.set(code_key(code), json.dumps(stored), ex=ttl)
 
     def pop(self, code):
         """Remove and return the stored authorization code document, if present."""
@@ -20,4 +22,5 @@ class Repository:
             return None
 
         decoded = payload.decode() if isinstance(payload, bytes) else payload
-        return json.loads(decoded)
+        document = json.loads(decoded)
+        return open_ms_auth_access_token(document)

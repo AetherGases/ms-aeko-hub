@@ -1,8 +1,7 @@
 """Resolve ms-auth Bearer tokens through GET /api/profile."""
 
 import hashlib
-import time
-from threading import Lock
+import json
 from typing import NamedTuple
 
 from cmd.api.integrations.profile_api import (
@@ -13,8 +12,6 @@ from cmd.api.integrations.profile_api import (
 )
 
 _PROFILE_CACHE_TTL_SECONDS = 30
-_profile_cache: dict[str, tuple[float, "MsAuthPrincipal"]] = {}
-_profile_cache_lock = Lock()
 
 
 class MsAuthPrincipal(NamedTuple):
@@ -53,19 +50,59 @@ def resolve_ms_auth_access_token(access_token: str) -> MsAuthPrincipal:
     )
 
 
-def resolve_ms_auth_access_token_cached(access_token: str) -> MsAuthPrincipal:
-    """Return a cached principal or validate the token with ms-auth."""
+def _profile_cache_key(access_token: str) -> str:
+    digest = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
+    return f"msauth:profile:{digest}"
+
+
+def _read_cached_principal(redis_client, cache_key: str, access_token: str):
+    try:
+        payload = redis_client.get(cache_key)
+    except Exception:
+        return None
+    if payload is None:
+        return None
+    try:
+        decoded = payload.decode() if isinstance(payload, bytes) else payload
+        document = json.loads(decoded)
+        return MsAuthPrincipal(
+            access_token=access_token,
+            id_external_user=int(document["id_external_user"]),
+            id_external_company=int(document["id_external_company"]),
+            profile=document["profile"],
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _write_cached_principal(redis_client, cache_key: str, principal: MsAuthPrincipal) -> None:
+    try:
+        redis_client.set(
+            cache_key,
+            json.dumps(
+                {
+                    "id_external_user": principal.id_external_user,
+                    "id_external_company": principal.id_external_company,
+                    "profile": principal.profile,
+                }
+            ),
+            ex=_PROFILE_CACHE_TTL_SECONDS,
+        )
+    except Exception:
+        return
+
+
+def resolve_ms_auth_access_token_cached(access_token: str, redis_client=None) -> MsAuthPrincipal:
+    """Return a Redis-cached principal or validate the token with ms-auth."""
     token = (access_token or "").strip()
     if not token:
         raise ValueError("Missing access token.")
-    cache_key = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    now = time.monotonic()
-    with _profile_cache_lock:
-        cached = _profile_cache.get(cache_key)
-        if cached is not None and cached[0] > now:
-            return cached[1]
-        _profile_cache.pop(cache_key, None)
+    if redis_client is not None:
+        cache_key = _profile_cache_key(token)
+        cached = _read_cached_principal(redis_client, cache_key, token)
+        if cached is not None:
+            return cached
     principal = resolve_ms_auth_access_token(token)
-    with _profile_cache_lock:
-        _profile_cache[cache_key] = (now + _PROFILE_CACHE_TTL_SECONDS, principal)
+    if redis_client is not None:
+        _write_cached_principal(redis_client, _profile_cache_key(token), principal)
     return principal

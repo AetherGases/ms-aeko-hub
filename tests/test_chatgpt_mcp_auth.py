@@ -665,3 +665,31 @@ def test_fastmcp_enables_dns_rebinding_protection(oauth_env):
     settings = build_mcp_server().settings.transport_security
     assert settings is not None
     assert settings.enable_dns_rebinding_protection is True
+
+
+def test_fastmcp_allowed_hosts_come_from_oauth_issuer(oauth_env, monkeypatch):
+    """Verify that DNS-rebinding hosts are taken from OAUTH_ISSUER, not hardcoded localhost."""
+    from cmd.api.acl.open_ai.server import build_mcp_server
+
+    monkeypatch.setenv("OAUTH_ISSUER", "https://prod.aether.example")
+    monkeypatch.setenv("OAUTH_AUDIENCE", "https://prod.aether.example/ai/mcp/")
+    monkeypatch.delenv("HOST", raising=False)
+
+    settings = build_mcp_server().settings.transport_security
+
+    assert "prod.aether.example" in settings.allowed_hosts
+    assert "prod.aether.example:*" in settings.allowed_hosts
+    assert "localhost:*" not in settings.allowed_hosts
+    assert "127.0.0.1:*" not in settings.allowed_hosts
+
+
+def test_fastmcp_allowed_hosts_include_host_env(oauth_env, monkeypatch):
+    """Verify that the HOST environment variable is allowed as a request Host."""
+    from cmd.api.acl.open_ai.server import build_mcp_server
+
+    monkeypatch.setenv("HOST", "mcp.internal.example")
+
+    settings = build_mcp_server().settings.transport_security
+
+    assert "mcp.internal.example" in settings.allowed_hosts
+    assert "mcp.internal.example:*" in settings.allowed_hosts

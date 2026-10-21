@@ -18,35 +18,71 @@ INVENTORY_WIDGET_PATH = (
 )
 
 
+_LOCAL_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+_LOCAL_ORIGINS = [
+    "http://127.0.0.1:*",
+    "http://localhost:*",
+    "http://[::1]:*",
+    "https://127.0.0.1:*",
+    "https://localhost:*",
+    "https://[::1]:*",
+]
+_CHATGPT_ORIGINS = [
+    "https://chatgpt.com",
+    "https://chatgpt.com:*",
+    "https://chat.openai.com",
+    "https://chat.openai.com:*",
+]
+_BIND_ALL_HOSTS = frozenset({"0.0.0.0", "::", "[::]"})
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered
+
+
+def _hosts_from_url(url: str) -> tuple[list[str], list[str]]:
+    parsed = urlparse((url or "").strip())
+    hosts: list[str] = []
+    origins: list[str] = []
+    if not parsed.netloc:
+        return hosts, origins
+    hosts.append(parsed.netloc)
+    if parsed.hostname:
+        hosts.append(parsed.hostname)
+        hosts.append(f"{parsed.hostname}:*")
+    if parsed.scheme:
+        origins.append(f"{parsed.scheme}://{parsed.netloc}")
+    return hosts, origins
+
+
 def _transport_security() -> TransportSecuritySettings:
-    allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
-    allowed_origins = [
-        "http://127.0.0.1:*",
-        "http://localhost:*",
-        "http://[::1]:*",
-        "https://127.0.0.1:*",
-        "https://localhost:*",
-        "https://[::1]:*",
-        "https://chatgpt.com",
-        "https://chatgpt.com:*",
-        "https://chat.openai.com",
-        "https://chat.openai.com:*",
-    ]
-    issuer = os.environ.get("OAUTH_ISSUER", "").strip()
-    if issuer:
-        parsed = urlparse(issuer)
-        if parsed.netloc:
-            allowed_hosts.append(parsed.netloc)
-            hostname = parsed.hostname
-            if hostname:
-                allowed_hosts.append(hostname)
-                allowed_hosts.append(f"{hostname}:*")
-            if parsed.scheme:
-                allowed_origins.append(f"{parsed.scheme}://{parsed.netloc}")
+    allowed_hosts: list[str] = []
+    allowed_origins = list(_CHATGPT_ORIGINS)
+    for value in (
+        os.environ.get("OAUTH_ISSUER", ""),
+        os.environ.get("OAUTH_AUDIENCE", ""),
+    ):
+        hosts, origins = _hosts_from_url(value)
+        allowed_hosts.extend(hosts)
+        allowed_origins.extend(origins)
+    host = os.environ.get("HOST", "").strip()
+    if host and host not in _BIND_ALL_HOSTS:
+        allowed_hosts.append(host)
+        allowed_hosts.append(f"{host}:*")
+    if not allowed_hosts:
+        allowed_hosts.extend(_LOCAL_HOSTS)
+        allowed_origins.extend(_LOCAL_ORIGINS)
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=allowed_hosts,
-        allowed_origins=allowed_origins,
+        allowed_hosts=_unique(allowed_hosts),
+        allowed_origins=_unique(allowed_origins),
     )
 
 

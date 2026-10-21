@@ -728,8 +728,8 @@ def test_send_message_rejects_input_above_the_length_bound(patched_user_reposito
     assert service.calls == []
 
 
-def test_send_message_rejects_an_implausible_session_id(patched_user_repository):
-    """Verify that send message rejects an id_session that is not empty or a plausible id."""
+def test_send_message_forwards_id_session_without_format_checks(patched_user_repository):
+    """Verify that send message forwards id_session to the service without HTTP format checks."""
     service = StubSessionService(result=make_message())
 
     response = build_client(service).post(
@@ -737,5 +737,5 @@ def test_send_message_rejects_an_implausible_session_id(patched_user_repository)
         json={**SEND_BODY, "id_session": "../not-a-session"},
     )
 
-    assert response.status_code == 400
-    assert service.calls == []
+    assert response.status_code == 200
+    assert service.calls[0]["id_session"] == "../not-a-session"

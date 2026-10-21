@@ -592,7 +592,32 @@ def test_redis_repository_pops_authorization_code_from_hashed_key(oauth_env):
     assert repository.pop("opaque-code") is None
 
 
+def test_redis_repository_omits_plaintext_ms_auth_token(oauth_env):
+    """Verify that the Redis authorization-code value does not contain the plaintext ms-auth token."""
+    from oauth.cache.key import code_key
+    from oauth.cache.repository import Repository
+
+    redis = FakeRedis()
+    repository = Repository(redis)
+    token = "ms-access-plaintext-secret"
+    document = {
+        "id_external_user": 1,
+        "id_external_company": 90,
+        "ms_auth_access_token": token,
+        "client_id": "chatgpt",
+        "redirect_uri": CHATGPT_REDIRECT,
+        "code_challenge": s256(VERIFIER),
+        "code_challenge_method": "S256",
+    }
+    repository.save("opaque-code", document, 300)
+    raw = redis.values[code_key("opaque-code")]
+    decoded = raw.decode() if isinstance(raw, bytes) else raw
+    assert token not in decoded
+    assert repository.pop("opaque-code") == document
+
+
 def test_session_repository_redis_value_omits_plaintext_ms_auth_token():
+
     """Verify that the Redis session value does not contain the plaintext ms-auth token."""
     from oauth.cache.key import session_key
     from oauth.cache.session_repository import Repository

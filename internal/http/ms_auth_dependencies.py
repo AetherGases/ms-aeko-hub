@@ -28,7 +28,10 @@ async def require_ms_auth_principal(request: Request):
     if token is None:
         raise HTTPException(status_code=401, detail="Missing access token.")
     try:
-        principal = await run_in_threadpool(resolve_ms_auth_access_token_cached, token)
+        redis = getattr(request.app.state, "redis", None)
+        principal = await run_in_threadpool(
+            resolve_ms_auth_access_token_cached, token, redis
+        )
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     user_token = bind_id_external_user(principal.id_external_user)

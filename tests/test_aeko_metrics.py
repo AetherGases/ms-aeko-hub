@@ -753,10 +753,20 @@ def test_company_cost_rejects_a_non_positive_window():
         Service(StubMetricsRepository()).company_cost(0, 90)
 
 
-def test_company_cost_rejects_a_window_above_ninety_days():
-    """Verify that company cost rejects n above 90 days."""
-    with pytest.raises(ValueError, match="n"):
-        Service(StubMetricsRepository()).company_cost(91, 90)
+def test_company_cost_accepts_a_window_above_ninety_days(monkeypatch):
+    """Verify that company cost has no upper bound on the trailing day window."""
+    monkeypatch.setattr(
+        "aeko_metrics.service.datetime",
+        SimpleNamespace(utcnow=lambda: CREATED_AT),
+    )
+    repository = StubMetricsRepository()
+
+    result = Service(repository).company_cost(91, 90)
+
+    assert repository.company_calls == [(90, CREATED_AT - timedelta(days=91))]
+    assert result.id_external_company == 90
+    assert result.cost_usd == 0.0
+    assert result.users == []
 
 
 def test_company_cost_rejects_a_non_positive_company():
