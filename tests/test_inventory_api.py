@@ -31,7 +31,9 @@ class RecordingRequest:
     """Captures every call `requests.request` would have made."""
 
     def __init__(self, response=None, error=None):
-        self.response = response if response is not None else FakeResponse(payload={"ok": True})
+        self.response = (
+            response if response is not None else FakeResponse(payload={"ok": True})
+        )
         self.error = error
         self.calls = []
 
@@ -103,7 +105,9 @@ def test_create_inventory_authenticates_with_a_bearer_token(recorded_request):
         "relatório", "inventorio-principal.xlsx", "https://cloudinary/sadjasoda"
     )
 
-    assert recorded_request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
+    assert (
+        recorded_request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
+    )
     assert recorded_request.calls[0]["headers"]["Authorization"] != "Bearer inv-key"
 
 
@@ -126,30 +130,13 @@ def test_create_inventory_returns_the_ms_payload_as_is(recorded_request):
     assert result["storageFile"]["path"] == "https://cloudinary/sadjasoda"
 
 
-def test_create_inventory_uses_bound_user_bearer_not_service_api_key(
-    monkeypatch, inventory_env
-):
-    """Verify that create inventory sends the user Bearer even when a service API key is set."""
-    request = RecordingRequest(FakeResponse(payload=INVENTORY_PAYLOAD))
-    monkeypatch.setattr(inventory_api.requests, "request", request)
-
-    inventory_api.create_inventory(
-        "relatório",
-        "inventorio-principal.xlsx",
-        "https://cloudinary/sadjasoda",
-        api_key="explicit-key",
-    )
-
-    assert request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
-    assert request.calls[0]["headers"]["Authorization"] != "Bearer explicit-key"
-    assert request.calls[0]["headers"]["Authorization"] != "Bearer inv-key"
-
-
 @pytest.mark.parametrize(
     "env_var",
     ["INVENTORY_MS_BASE_URL", "MS_HTTP_TIMEOUT"],
 )
-def test_create_inventory_raises_naming_a_missing_env_var(monkeypatch, inventory_env, env_var):
+def test_create_inventory_raises_naming_a_missing_env_var(
+    monkeypatch, inventory_env, env_var
+):
     """Verify that create inventory raises naming a missing env var."""
     monkeypatch.delenv(env_var, raising=False)
 
@@ -196,7 +183,9 @@ def test_create_inventory_raises_inventory_error_on_non_object_json_error_body(
     assert "500" in str(error.value)
 
 
-def test_create_inventory_raises_when_the_service_is_never_reached(monkeypatch, inventory_env):
+def test_create_inventory_raises_when_the_service_is_never_reached(
+    monkeypatch, inventory_env
+):
     """Verify that create inventory raises when the service is never reached."""
     monkeypatch.setattr(
         inventory_api.requests,
@@ -212,7 +201,9 @@ def test_create_inventory_raises_when_the_service_is_never_reached(monkeypatch, 
     assert "name resolution failed" in str(error.value)
 
 
-def test_create_inventory_raises_when_a_successful_answer_is_not_json(monkeypatch, inventory_env):
+def test_create_inventory_raises_when_a_successful_answer_is_not_json(
+    monkeypatch, inventory_env
+):
     """Verify that create inventory raises when a successful answer is not json."""
     monkeypatch.setattr(
         inventory_api.requests,

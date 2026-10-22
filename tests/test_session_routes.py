@@ -47,8 +47,15 @@ class StubSessionService:
         """Retrieve the stored messages for a session."""
         return self._run(id_session=id_session)
 
-    def send_message(self, id_session, input, id_user, aeko_messenger_factory,
-                     aeko_session_factory, user_repository):
+    def send_message(
+        self,
+        id_session,
+        input,
+        id_user,
+        aeko_messenger_factory,
+        aeko_session_factory,
+        user_repository,
+    ):
         """Record the conversation call and return or raise its scripted result."""
         result = self._run(
             id_session=id_session,
@@ -97,7 +104,9 @@ class StubSessionRepository:
     """Return scripted sessions for authorization checks in route tests."""
 
     def __init__(self, sessions_by_id=None):
-        default = Session(id="s1", id_user="u1", name="Weekly emissions review", messages=[])
+        default = Session(
+            id="s1", id_user="u1", name="Weekly emissions review", messages=[]
+        )
         self.sessions_by_id = sessions_by_id or {"s1": default}
 
     def get_session(self, id_session):
@@ -108,7 +117,13 @@ class StubSessionRepository:
         return session
 
 
-def build_client(service=None, db="fake-db", factories=True, user_repository=None, session_repository=None):
+def build_client(
+    service=None,
+    db="fake-db",
+    factories=True,
+    user_repository=None,
+    session_repository=None,
+):
     """Build a test client or client double with the supplied dependencies."""
     app = FastAPI()
     app.include_router(session_handlers.router)
@@ -122,7 +137,9 @@ def build_client(service=None, db="fake-db", factories=True, user_repository=Non
     user_repo = user_repository or StubUserRepository()
     session_repo = session_repository or StubSessionRepository()
     app.dependency_overrides[session_handlers.get_user_repository] = lambda: user_repo
-    app.dependency_overrides[session_handlers.get_session_repository] = lambda: session_repo
+    app.dependency_overrides[session_handlers.get_session_repository] = lambda: (
+        session_repo
+    )
     return TestClient(app)
 
 
@@ -145,8 +162,18 @@ def test_get_user_sessions_returns_sessions():
     """Verify that get user sessions returns sessions."""
     service = StubSessionService(
         result=[
-            Session(id="65a8b3d6c0f8e1d7f4b2c001", id_user="u1", name="Weekly emissions review", messages=[]),
-            Session(id="65a8b3d6c0f8e1d7f4b2c002", id_user="u1", name="Scope 3 questions", messages=[]),
+            Session(
+                id="65a8b3d6c0f8e1d7f4b2c001",
+                id_user="u1",
+                name="Weekly emissions review",
+                messages=[],
+            ),
+            Session(
+                id="65a8b3d6c0f8e1d7f4b2c002",
+                id_user="u1",
+                name="Scope 3 questions",
+                messages=[],
+            ),
         ]
     )
     response = build_client(service).get(SESSIONS_ROUTE.format(id_external_user=12345))
@@ -161,7 +188,9 @@ def test_get_user_sessions_returns_sessions():
 
 def test_get_user_sessions_returns_empty_list():
     """Verify that get user sessions returns empty list."""
-    response = build_client(StubSessionService(result=[])).get(SESSIONS_ROUTE.format(id_external_user=12345))
+    response = build_client(StubSessionService(result=[])).get(
+        SESSIONS_ROUTE.format(id_external_user=12345)
+    )
 
     assert response.status_code == 200
     assert response.json() == []
@@ -208,7 +237,9 @@ def test_get_user_sessions_maps_unexpected_error_to_500():
 
 def test_get_user_sessions_returns_503_when_database_is_not_initialized():
     """Verify that get user sessions returns 503 when database is not initialized."""
-    response = build_client(service=None, db=None).get(SESSIONS_ROUTE.format(id_external_user=12345))
+    response = build_client(service=None, db=None).get(
+        SESSIONS_ROUTE.format(id_external_user=12345)
+    )
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Database is not initialized"
@@ -318,7 +349,9 @@ def test_send_message_returns_the_exchange(patched_user_repository):
     }
 
 
-def test_send_message_injects_both_sdk_factories_from_app_state(patched_user_repository):
+def test_send_message_injects_both_sdk_factories_from_app_state(
+    patched_user_repository,
+):
     """Verify that send message injects both sdk factories from app state."""
     service = StubSessionService(result=make_message())
 
@@ -414,7 +447,9 @@ def test_send_message_returns_403_when_external_user_differs(patched_user_reposi
     app.state._state["aeko_session_factory"] = SESSION_FACTORY
     override_ms_auth(app, ms_auth_principal(id_external_user=12345))
     app.dependency_overrides[session_handlers.get_session_service] = lambda: service
-    app.dependency_overrides[session_handlers.get_user_repository] = lambda: StubUserRepository()
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: (
+        StubUserRepository()
+    )
 
     response = TestClient(app).post(
         SEND_ROUTE,
@@ -426,7 +461,9 @@ def test_send_message_returns_403_when_external_user_differs(patched_user_reposi
     assert StubUserService.create_calls == []
 
 
-def test_send_message_returns_403_when_external_company_differs(patched_user_repository):
+def test_send_message_returns_403_when_external_company_differs(
+    patched_user_repository,
+):
     """Verify that send message rejects a body company that does not match the token."""
     StubUserService.create_calls = []
     service = StubSessionService(result=make_message())
@@ -437,7 +474,9 @@ def test_send_message_returns_403_when_external_company_differs(patched_user_rep
     app.state._state["aeko_session_factory"] = SESSION_FACTORY
     override_ms_auth(app, ms_auth_principal(id_external_company=90))
     app.dependency_overrides[session_handlers.get_session_service] = lambda: service
-    app.dependency_overrides[session_handlers.get_user_repository] = lambda: StubUserRepository()
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: (
+        StubUserRepository()
+    )
 
     response = TestClient(app).post(
         SEND_ROUTE,
@@ -468,14 +507,32 @@ def test_send_message_provisions_with_empty_role_and_usecase(patched_user_reposi
 @pytest.mark.parametrize(
     "json_body",
     [
-        pytest.param({k: v for k, v in SEND_BODY.items() if k != "id_external_user"}, id="missing_id_external_user"),
-        pytest.param({k: v for k, v in SEND_BODY.items() if k != "id_external_company"}, id="missing_id_external_company"),
+        pytest.param(
+            {k: v for k, v in SEND_BODY.items() if k != "id_external_user"},
+            id="missing_id_external_user",
+        ),
+        pytest.param(
+            {k: v for k, v in SEND_BODY.items() if k != "id_external_company"},
+            id="missing_id_external_company",
+        ),
         pytest.param({**SEND_BODY, "id_external_user": 0}, id="zero_id_external_user"),
-        pytest.param({**SEND_BODY, "id_external_company": 0}, id="zero_id_external_company"),
-        pytest.param({**SEND_BODY, "id_external_user": -1}, id="negative_id_external_user"),
-        pytest.param({**SEND_BODY, "id_external_company": -1}, id="negative_id_external_company"),
-        pytest.param({**SEND_BODY, "id_external_user": "not-a-number"}, id="non_numeric_id_external_user"),
-        pytest.param({**SEND_BODY, "id_external_company": "not-a-number"}, id="non_numeric_id_external_company"),
+        pytest.param(
+            {**SEND_BODY, "id_external_company": 0}, id="zero_id_external_company"
+        ),
+        pytest.param(
+            {**SEND_BODY, "id_external_user": -1}, id="negative_id_external_user"
+        ),
+        pytest.param(
+            {**SEND_BODY, "id_external_company": -1}, id="negative_id_external_company"
+        ),
+        pytest.param(
+            {**SEND_BODY, "id_external_user": "not-a-number"},
+            id="non_numeric_id_external_user",
+        ),
+        pytest.param(
+            {**SEND_BODY, "id_external_company": "not-a-number"},
+            id="non_numeric_id_external_company",
+        ),
     ],
 )
 def test_send_message_returns_400_and_never_creates_on_invalid_external_ids(
@@ -525,7 +582,9 @@ def build_cost_client(service=None, db="fake-db", id_external_company=90):
     app.state.db = db
     override_ms_auth(app, ms_auth_principal(id_external_company=id_external_company))
     if service is not None:
-        app.dependency_overrides[session_handlers.get_aeko_metrics_service] = lambda: service
+        app.dependency_overrides[session_handlers.get_aeko_metrics_service] = lambda: (
+            service
+        )
     return TestClient(app)
 
 
@@ -610,15 +669,17 @@ def test_the_sessions_cost_route_returns_403_for_another_company():
 
 def test_get_session_messages_returns_403_when_session_belongs_to_another_user():
     """Verify that session messages return 403 when the session owner does not match the token."""
-    other_user = User(id="other", id_external_user=99999, role="analyst", usecase="chat")
+    other_user = User(
+        id="other", id_external_user=99999, role="analyst", usecase="chat"
+    )
     service = StubSessionService(result=[make_message()])
     session_repo = StubSessionRepository(
         sessions_by_id={"s1": Session(id="s1", id_user="other", name="n", messages=[])}
     )
     user_repo = StubUserRepository(users_by_id={"other": other_user})
-    response = build_client(service, user_repository=user_repo, session_repository=session_repo).get(
-        MESSAGES_ROUTE.format(id_session="s1")
-    )
+    response = build_client(
+        service, user_repository=user_repo, session_repository=session_repo
+    ).get(MESSAGES_ROUTE.format(id_session="s1"))
 
     assert response.status_code == 403
     assert service.calls == []
@@ -633,10 +694,15 @@ def test_session_routes_return_401_without_bearer_token():
 
     assert client.get(SESSIONS_ROUTE.format(id_external_user=12345)).status_code == 401
     assert client.get(MESSAGES_ROUTE.format(id_session="s1")).status_code == 401
-    assert client.get(COST_ROUTE, params={"n": 7, "id_external_company": 90}).status_code == 401
+    assert (
+        client.get(COST_ROUTE, params={"n": 7, "id_external_company": 90}).status_code
+        == 401
+    )
 
 
-def test_send_message_runs_the_blocking_sdk_call_off_the_event_loop(patched_user_repository):
+def test_send_message_runs_the_blocking_sdk_call_off_the_event_loop(
+    patched_user_repository,
+):
     """Verify that send message runs the blocking sdk call off the event loop."""
 
     class LoopAwareService(StubSessionService):
@@ -711,7 +777,9 @@ def test_send_message_rejects_input_that_is_not_a_string(patched_user_repository
     """Verify that send message rejects a non-string input with 400."""
     service = StubSessionService(result=make_message())
 
-    response = build_client(service).post(SEND_ROUTE, json={**SEND_BODY, "input": ["hi"]})
+    response = build_client(service).post(
+        SEND_ROUTE, json={**SEND_BODY, "input": ["hi"]}
+    )
 
     assert response.status_code == 400
     assert service.calls == []
@@ -722,13 +790,17 @@ def test_send_message_rejects_input_above_the_length_bound(patched_user_reposito
     service = StubSessionService(result=make_message())
     too_long = "x" * (session_handlers.MESSAGE_INPUT_MAX_LENGTH + 1)
 
-    response = build_client(service).post(SEND_ROUTE, json={**SEND_BODY, "input": too_long})
+    response = build_client(service).post(
+        SEND_ROUTE, json={**SEND_BODY, "input": too_long}
+    )
 
     assert response.status_code == 400
     assert service.calls == []
 
 
-def test_send_message_forwards_id_session_without_format_checks(patched_user_repository):
+def test_send_message_forwards_id_session_without_format_checks(
+    patched_user_repository,
+):
     """Verify that send message forwards id_session to the service without HTTP format checks."""
     service = StubSessionService(result=make_message())
 

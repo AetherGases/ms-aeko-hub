@@ -6,7 +6,9 @@ from user.entity import User, UserMemory
 from user.service import Service
 from user.user import IService
 
-USER = User(id="u1", id_external_user=12345, role="analyst", usecase="report_generation")
+USER = User(
+    id="u1", id_external_user=12345, role="analyst", usecase="report_generation"
+)
 
 
 class StubUserRepository:
@@ -87,7 +89,9 @@ def test_get_mongo_user_wraps_unexpected_errors():
 
 def test_get_user_memories_delegates_to_the_repository():
     """Verify that get user memories delegates to the repository."""
-    memory = UserMemory(id="m1", id_user="u1", field="improvement_plan", description="text")
+    memory = UserMemory(
+        id="m1", id_user="u1", field="improvement_plan", description="text"
+    )
     repository = StubUserRepository(result=[memory])
     service = Service(repository)
 
@@ -114,7 +118,9 @@ def test_create_user_memory_delegates_to_the_repository():
     """Verify that create user memory delegates to the repository."""
     repository = StubUserRepository()
     service = Service(repository)
-    memory = UserMemory(id=None, id_user="u1", field="improvement_plan", description="text")
+    memory = UserMemory(
+        id=None, id_user="u1", field="improvement_plan", description="text"
+    )
 
     assert service.create_user_memory(memory) is None
     assert repository.calls == [("create_user_memory", memory)]
@@ -125,7 +131,9 @@ def test_create_user_memory_wraps_unexpected_errors():
     service = Service(StubUserRepository(error=OSError("mongo down")))
 
     with pytest.raises(RuntimeError, match="mongo down"):
-        service.create_user_memory(UserMemory(id=None, id_user="u1", field="f", description="d"))
+        service.create_user_memory(
+            UserMemory(id=None, id_user="u1", field="f", description="d")
+        )
 
 
 def test_get_mongo_user_or_create_returns_an_existing_user():
@@ -133,7 +141,9 @@ def test_get_mongo_user_or_create_returns_an_existing_user():
     repository = StubUserRepository(result=USER)
     service = Service(repository)
 
-    assert service.get_mongo_user_or_create(12345, "analyst", "report_generation") is USER
+    assert (
+        service.get_mongo_user_or_create(12345, "analyst", "report_generation") is USER
+    )
     assert repository.calls == [("get_user", 12345)]
 
 
@@ -190,7 +200,9 @@ def test_apply_sign_in_profile_updates_an_existing_user():
     repository = Repository()
     service = Service(repository)
 
-    assert service.apply_sign_in_profile(12345, ms_auth_profile=PROFILE_PAYLOAD) is updated
+    assert (
+        service.apply_sign_in_profile(12345, ms_auth_profile=PROFILE_PAYLOAD) is updated
+    )
     assert repository.calls[0][0] == "sync_sign_in_profile"
     assert repository.calls[0][2]["id_external_company"] == 90
     assert updated.role == "Analista ESG"
@@ -212,7 +224,9 @@ def test_apply_sign_in_profile_creates_when_missing():
         def sync_sign_in_profile(self, id_external_user, **kwargs):
             """Raise not found so the service creates the user."""
             self.calls.append(("sync_sign_in_profile", id_external_user, kwargs))
-            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            raise ValueError(
+                f"User with id_external_user {id_external_user} not found."
+            )
 
         def create_user(self, id_external_user, role, usecase, **kwargs):
             """Record provisioning and return the created user."""
@@ -248,7 +262,9 @@ def test_update_user_profile_rejects_blank_role():
 
 def test_get_mongo_user_or_create_persists_empty_role_usecase_and_company():
     """Verify that get mongo user or create persists empty role, usecase, and company."""
-    created = User(id="u2", id_external_user=99, role="", usecase="", id_external_company=90)
+    created = User(
+        id="u2", id_external_user=99, role="", usecase="", id_external_company=90
+    )
 
     class Repository(StubUserRepository):
         def get_user(self, id_external_user):
@@ -266,7 +282,9 @@ def test_get_mongo_user_or_create_persists_empty_role_usecase_and_company():
     repository = Repository()
     service = Service(repository)
 
-    assert service.get_mongo_user_or_create(99, "", "", id_external_company=90) is created
+    assert (
+        service.get_mongo_user_or_create(99, "", "", id_external_company=90) is created
+    )
     assert repository.calls == [
         ("get_user", 99),
         ("create_user", 99, "", "", {"id_external_company": 90}),
@@ -275,10 +293,13 @@ def test_get_mongo_user_or_create_persists_empty_role_usecase_and_company():
 
 def test_get_mongo_user_or_create_wraps_unexpected_create_errors():
     """Verify that get mongo user or create wraps unexpected repository errors on insert."""
+
     class Repository(StubUserRepository):
         def get_user(self, id_external_user):
             """Raise not found so the service attempts to create the user."""
-            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            raise ValueError(
+                f"User with id_external_user {id_external_user} not found."
+            )
 
         def create_user(self, id_external_user, role, usecase, **kwargs):
             """Raise a transport error while inserting."""
@@ -320,9 +341,12 @@ def test_get_mongo_user_or_create_syncs_company_for_an_existing_user():
     repository = Repository()
     service = Service(repository)
 
-    assert service.get_mongo_user_or_create(
-        12345, "analyst", "report_generation", id_external_company=91
-    ) is updated
+    assert (
+        service.get_mongo_user_or_create(
+            12345, "analyst", "report_generation", id_external_company=91
+        )
+        is updated
+    )
     assert repository.calls == [
         ("get_user", 12345),
         ("sync_sign_in_profile", 12345, {"id_external_company": 91}),

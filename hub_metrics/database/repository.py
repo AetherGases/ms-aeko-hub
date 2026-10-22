@@ -1,15 +1,15 @@
 """Persist and retrieve HTTP request metrics through MongoDB."""
 
+from hub_metrics.constants import COLLECTION
 from hub_metrics.database import query as q
 from hub_metrics.entity import Metric
 from hub_metrics.hub_metrics import IRepository
 from internal.shared import Module, logged
 
-COLLECTION = "hub_metrics"
-
 
 class Repository(IRepository):
     def __init__(self, db):
+        """Bind the MongoDB database handle."""
         self.db = db
 
     @logged(Module.DATABASE, "hub_metrics.create_metric")
@@ -27,7 +27,10 @@ class Repository(IRepository):
         """Retrieve all stored metrics."""
         try:
             query, projection = q.get_all_metrics_query()
-            return [metric_from_data(data) for data in self.db[COLLECTION].find(query, projection)]
+            return [
+                metric_from_data(data)
+                for data in self.db[COLLECTION].find(query, projection)
+            ]
         except Exception as e:
             raise RuntimeError(f"Error fetching metrics from database: {e}")
 

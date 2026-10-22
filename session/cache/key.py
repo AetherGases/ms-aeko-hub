@@ -1,6 +1,6 @@
 """Build Redis key names for session activity and window caches."""
 
-SESSION_KEY_PREFIX = "aeko:session"
+from session.constants import SESSION_KEY_PREFIX
 
 
 def activity_key(id_session: str) -> str:

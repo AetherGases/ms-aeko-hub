@@ -18,9 +18,7 @@ def expose_function(func: Callable[..., Any]) -> Callable[..., Any]:
 
     signature = inspect.signature(func)
     renamed = {
-        name: name.lstrip("_")
-        for name in signature.parameters
-        if name.startswith("_")
+        name: name.lstrip("_") for name in signature.parameters if name.startswith("_")
     }
     if not renamed:
         return func
@@ -39,7 +37,9 @@ def expose_function(func: Callable[..., Any]) -> Callable[..., Any]:
 
         return func(
             *args,
-            **{original_by_public.get(key, key): value for key, value in kwargs.items()},
+            **{
+                original_by_public.get(key, key): value for key, value in kwargs.items()
+            },
         )
 
     wrapper.__signature__ = public_signature

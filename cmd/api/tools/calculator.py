@@ -72,7 +72,9 @@ def _binary(node: ast.BinOp) -> int | float:
     except ZeroDivisionError as exc:
         raise ValueError(f"{ast.unparse(node)!r} divides by zero") from exc
     except OverflowError as exc:
-        raise ValueError(f"{ast.unparse(node)!r} is too large a number to represent") from exc
+        raise ValueError(
+            f"{ast.unparse(node)!r} is too large a number to represent"
+        ) from exc
 
     return _real(result, node)
 
@@ -104,9 +106,13 @@ def _call(node: ast.Call) -> int | float:
         )
 
     try:
-        result = CALCULATOR_FUNCTIONS[name](*[_argument(argument) for argument in node.args])
+        result = CALCULATOR_FUNCTIONS[name](
+            *[_argument(argument) for argument in node.args]
+        )
     except (TypeError, ValueError, OverflowError) as exc:
-        raise ValueError(f"{ast.unparse(node)!r} could not be calculated: {exc}") from exc
+        raise ValueError(
+            f"{ast.unparse(node)!r} could not be calculated: {exc}"
+        ) from exc
 
     return _real(result, node)
 

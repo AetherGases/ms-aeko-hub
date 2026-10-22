@@ -6,7 +6,11 @@ import secrets
 from urllib.parse import quote, urlparse
 
 from cmd.api.integrations.auth_api import login
-from cmd.api.integrations.profile_api import get_profile, profile_enterprise_id, profile_id
+from cmd.api.integrations.profile_api import (
+    get_profile,
+    profile_enterprise_id,
+    profile_id,
+)
 from oauth.constants import (
     OAUTH_AUDIENCE,
     OAUTH_AUTHORIZATION_CODE_TTL_SECONDS,
@@ -18,8 +22,12 @@ from oauth.oauth import IService
 from oauth.token import encode_access_token, pkce_s256
 
 _callback_id = r"[A-Za-z0-9_-]+"
-_cimd_callback = re.compile(rf"^https://chatgpt\.com/oauth/{_callback_id}/client\.json$")
-_redirect_connector = re.compile(rf"^https://chatgpt\.com/connector/oauth/{_callback_id}$")
+_cimd_callback = re.compile(
+    rf"^https://chatgpt\.com/oauth/{_callback_id}/client\.json$"
+)
+_redirect_connector = re.compile(
+    rf"^https://chatgpt\.com/connector/oauth/{_callback_id}$"
+)
 _chatgpt_redirect = "https://chatgpt.com/connector_platform_oauth_redirect"
 _cimd_client = "https://chatgpt.com/oauth/client.json"
 
@@ -72,6 +80,7 @@ def validate_authorize_parameters(
 
 class Service(IService):
     def __init__(self, repository, users=None, sessions=None):
+        """Bind OAuth cache, session, and user collaborators."""
         self.repository = repository
         self.users = users
         self.sessions = sessions
@@ -125,7 +134,9 @@ class Service(IService):
                 "id_external_user": id_external_user,
                 "id_external_company": id_external_company,
                 "ms_auth_access_token": access_token,
-                "ms_auth_access_token_expires_in": _expires_in_from_login_payload(payload),
+                "ms_auth_access_token_expires_in": _expires_in_from_login_payload(
+                    payload
+                ),
                 "client_id": client_id,
                 "redirect_uri": redirect_uri,
                 "code_challenge": code_challenge,
@@ -133,9 +144,7 @@ class Service(IService):
             },
             OAUTH_AUTHORIZATION_CODE_TTL_SECONDS,
         )
-        query = (
-            f"code={quote(code, safe='')}&state={quote(state, safe='')}&iss={quote(OAUTH_ISSUER, safe=':/')}"
-        )
+        query = f"code={quote(code, safe='')}&state={quote(state, safe='')}&iss={quote(OAUTH_ISSUER, safe=':/')}"
         return f"{redirect_uri}?{query}"
 
     def exchange(
@@ -153,7 +162,10 @@ class Service(IService):
         document = self.repository.pop(code)
         if document is None:
             raise ValueError("Invalid authorization code.")
-        if document.get("client_id") != client_id or document.get("redirect_uri") != redirect_uri:
+        if (
+            document.get("client_id") != client_id
+            or document.get("redirect_uri") != redirect_uri
+        ):
             raise ValueError("Invalid authorization code.")
         try:
             challenge = pkce_s256(code_verifier)

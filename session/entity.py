@@ -11,6 +11,7 @@ class Message:
     submitted_at: datetime
 
     def __init__(self, input: str, output: str, submitted_at: datetime):
+        """Store one conversation message."""
         self.input = input
         self.output = output
         self.submitted_at = submitted_at
@@ -24,7 +25,16 @@ class Session:
     created_at: datetime | None
     updated_at: datetime | None
 
-    def __init__(self, id: str, id_user: str, name: str, messages: list[Message], created_at: datetime | None = None, updated_at: datetime | None = None):
+    def __init__(
+        self,
+        id: str,
+        id_user: str,
+        name: str,
+        messages: list[Message],
+        created_at: datetime | None = None,
+        updated_at: datetime | None = None,
+    ):
+        """Store session identity and timestamps."""
         self.id = id
         self.id_user = id_user
         self.name = name
@@ -40,6 +50,7 @@ class SendMessageResult:
     session: Session
 
     def __init__(self, message: Message, session: Session):
+        """Store the outcome of sending a conversation turn."""
         self.message = message
         self.session = session
 
@@ -51,6 +62,7 @@ class SessionWindow:
     messages: list[Message]
 
     def __init__(self, id_user: str, messages: list[Message]):
+        """Store the cached conversation window for a session."""
         self.id_user = id_user
         self.messages = messages
 
@@ -68,4 +80,3 @@ class SessionWindow:
                 break
             window.insert(0, messages[index])
         return window
-        

@@ -44,9 +44,9 @@ def _server_environment(tenant: str, database: str, api_key: str) -> dict[str, s
     """Build the child environment with credentials, cache paths, and quiet progress settings."""
 
     environment = {
-        'CHROMA_TENANT': tenant,
-        'CHROMA_DATABASE': database,
-        'CHROMA_API_KEY': api_key,
+        "CHROMA_TENANT": tenant,
+        "CHROMA_DATABASE": database,
+        "CHROMA_API_KEY": api_key,
         **QUIET_CHILD_ENV,
     }
     for name in PASSTHROUGH_ENV_VARS:
@@ -64,16 +64,15 @@ def _configure_mcp_client(
 ) -> MultiServerMCPClient:
     """Build the configured stdio MCP client, validating required credentials."""
 
-    tenant = _required_setting(tenant, 'CHROMA_TENANT')
-    database = _required_setting(database, 'CHROMA_DATABASE')
-    api_key = _required_setting(api_key, 'CHROMA_API_KEY')
+    tenant = _required_setting(tenant, "CHROMA_TENANT")
+    database = _required_setting(database, "CHROMA_DATABASE")
+    api_key = _required_setting(api_key, "CHROMA_API_KEY")
 
     return MultiServerMCPClient(
         {
             "chroma": {
                 "transport": "stdio",
                 "command": sys.executable,
-
                 "args": [str(CHROMA_MCP_SERVER_SCRIPT)],
                 "env": _server_environment(tenant, database, api_key),
             }
@@ -196,7 +195,9 @@ def _parse_query(query: str | list[str] | None) -> list[str]:
         candidates = []
 
     texts = [
-        text.strip() for text in candidates if isinstance(text, str) and text.strip() != ""
+        text.strip()
+        for text in candidates
+        if isinstance(text, str) and text.strip() != ""
     ]
 
     if len(texts) != len(candidates) or texts == []:
@@ -248,7 +249,9 @@ def _hydrate_plans(payload: Any, company: int) -> list[dict[str, Any]]:
 
 
 @logged(Module.TOOL, "query_improvement_plan_problems")
-def _query_improvement_plan_problems(id_external_user: int, query: str) -> list[dict[str, Any]]:
+def _query_improvement_plan_problems(
+    id_external_user: int, query: str
+) -> list[dict[str, Any]]:
     """Search plan problems in the user's company and return hydrated catalog rows."""
 
     identifier = _positive_int(id_external_user, "id_external_user")

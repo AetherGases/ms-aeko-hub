@@ -60,7 +60,9 @@ class RecordingRequest:
     """Captures every call `requests.request` would have made."""
 
     def __init__(self, response=None, error=None):
-        self.response = response if response is not None else FakeResponse(payload={"ok": True})
+        self.response = (
+            response if response is not None else FakeResponse(payload={"ok": True})
+        )
         self.error = error
         self.calls = []
 
@@ -118,7 +120,9 @@ def test_profile_id_returns_the_positive_integer_id():
     assert profile_id({"id": "12"}) == 12
 
 
-@pytest.mark.parametrize("payload", [{}, {"id": True}, {"id": 0}, {"id": -1}, {"id": "x"}])
+@pytest.mark.parametrize(
+    "payload", [{}, {"id": True}, {"id": 0}, {"id": -1}, {"id": "x"}]
+)
 def test_profile_id_rejects_an_unusable_id(payload):
     """Verify that profile id rejects an unusable id."""
     from cmd.api.integrations.profile_api import profile_id
@@ -187,7 +191,9 @@ def test_get_profile_raises_on_http_error(monkeypatch, profile_env, status_code)
     monkeypatch.setattr(
         ms_auth_http.requests,
         "request",
-        RecordingRequest(FakeResponse(status_code=status_code, payload={"message": "denied"})),
+        RecordingRequest(
+            FakeResponse(status_code=status_code, payload={"message": "denied"})
+        ),
     )
     with pytest.raises(profile_api.ProfileError):
         profile_api.get_profile("ms-access")

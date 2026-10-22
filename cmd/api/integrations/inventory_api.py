@@ -6,8 +6,7 @@ from typing import Any
 import requests
 
 from cmd.api.acl.open_ai.identity import current_ms_auth_access_token
-
-INVENTORY_CREATE_PATH = "/api/inventories"
+from cmd.api.integrations.constants import INVENTORY_CREATE_PATH
 
 
 class InventoryError(RuntimeError):
@@ -51,12 +50,15 @@ def _error_detail(response: Any) -> str:
     if not isinstance(body, dict):
         return response.text.strip()
 
-    return " - ".join(
-        str(body[field]) for field in ("error_code", "message") if field in body
-    ) or response.text.strip()
+    return (
+        " - ".join(
+            str(body[field]) for field in ("error_code", "message") if field in body
+        )
+        or response.text.strip()
+    )
 
 
-def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -> Any:
+def _request(method: str, url: str, **kwargs: Any) -> Any:
     """Send an Inventory microservice HTTP request and translate transport and status errors."""
 
     headers = {"Authorization": f"Bearer {current_ms_auth_access_token()}"}
@@ -85,15 +87,12 @@ def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -
         ) from exc
 
 
-def create_inventory(
-    name: str, file_name: str, path: str, *, api_key: str | None = None
-) -> dict:
+def create_inventory(name: str, file_name: str, path: str) -> dict:
     """Create an inventory record as the bound ms-auth user and return the payload as-is."""
 
     url = f"{_base_url()}{INVENTORY_CREATE_PATH}"
     return _request(
         "POST",
         url,
-        api_key=api_key,
         json={"name": name, "fileName": file_name, "path": path},
     )

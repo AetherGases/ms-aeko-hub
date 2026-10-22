@@ -32,7 +32,9 @@ def get_improvement_plan_method_query(id_external_inventory: int) -> tuple[dict,
     }
 
 
-def get_improvement_plan_reasoning_query(id_external_inventory: int) -> tuple[dict, dict]:
+def get_improvement_plan_reasoning_query(
+    id_external_inventory: int,
+) -> tuple[dict, dict]:
     """Build the filter and projection for an inventory plan's reasoning."""
     query, _ = get_by_id_external_inventory_query(id_external_inventory)
     return query, {
@@ -70,7 +72,9 @@ def create_improvement_plan_query(improvement_plan: ImprovementPlan) -> dict:
     return {field: value for field, value in document.items() if value is not None}
 
 
-def replace_improvement_plan_query(improvement_plan: ImprovementPlan) -> tuple[dict, dict]:
+def replace_improvement_plan_query(
+    improvement_plan: ImprovementPlan,
+) -> tuple[dict, dict]:
     """Build the filter and replacement document for an inventory's current plan."""
     return {
         "id_external_inventory": improvement_plan.id_external_inventory,

@@ -38,7 +38,9 @@ class FakeSession:
 class FakeClient:
     """`MultiServerMCPClient`, whose `session()` is an async context manager."""
 
-    def __init__(self, tools, fails_to_open=None, fails_to_close=None, hangs_on_close=False):
+    def __init__(
+        self, tools, fails_to_open=None, fails_to_close=None, hangs_on_close=False
+    ):
         self.tools = tools
         self.fails_to_open = fails_to_open
         self.fails_to_close = fails_to_close
@@ -263,7 +265,9 @@ def test_closing_leaves_the_session_and_the_server_behind():
 
 def test_closing_survives_a_server_that_fails_on_the_way_out():
     """Verify that closing survives a server that fails on the way out."""
-    client = FakeClient([FakeTool("search", result="ok")], fails_to_close=OSError("broken pipe"))
+    client = FakeClient(
+        [FakeTool("search", result="ok")], fails_to_close=OSError("broken pipe")
+    )
     session = build_session(client)
     session.start()
 

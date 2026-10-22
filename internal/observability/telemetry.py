@@ -15,7 +15,10 @@ from opentelemetry.sdk.metrics._internal.instrument import (
     ObservableUpDownCounter,
     UpDownCounter,
 )
-from opentelemetry.sdk.metrics.export import AggregationTemporality, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import (
+    AggregationTemporality,
+    PeriodicExportingMetricReader,
+)
 from opentelemetry.sdk.resources import Resource
 
 if TYPE_CHECKING:
@@ -42,6 +45,7 @@ _AEKO_TOOL_INVOCATIONS = "aether.aeko.tool.invocations"
 
 
 def _latency_ms(value: str) -> float:
+    """Parse a millisecond duration string into a float."""
     text = value.strip()
     if text.endswith("ms"):
         try:
@@ -52,6 +56,7 @@ def _latency_ms(value: str) -> float:
 
 
 def _parse_headers(raw: str) -> dict[str, str]:
+    """Parse comma-separated OTLP header assignments."""
     headers: dict[str, str] = {}
     for part in raw.split(","):
         piece = part.strip()
@@ -63,6 +68,7 @@ def _parse_headers(raw: str) -> dict[str, str]:
 
 
 def _dynatrace_authorization(token: str) -> str:
+    """Normalize a Dynatrace token into an Authorization header."""
     value = token.strip()
     if not value:
         return ""
@@ -73,6 +79,7 @@ def _dynatrace_authorization(token: str) -> str:
 
 
 def _otlp_auth_headers() -> dict[str, str] | None:
+    """Resolve OTLP exporter authorization headers from the environment."""
     raw = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "").strip()
     if raw:
         parsed = _parse_headers(raw)
@@ -96,6 +103,7 @@ def _dynatrace_delta_temporality() -> dict[type, AggregationTemporality]:
 
 
 def _normalize_metrics_endpoint(endpoint: str) -> str:
+    """Ensure the OTLP metrics URL includes the metrics path."""
     url = endpoint.strip().rstrip("/")
     if not url:
         return url
@@ -111,7 +119,14 @@ def configure(metric_reader=None) -> None:
 
     Defaults OTLP metric temporality to DELTA because Dynatrace OTLP rejects cumulative counters.
     """
-    global _meter, _provider, _hub_requests, _hub_latency, _aeko_runs, _aeko_latency, _aeko_cost
+    global \
+        _meter, \
+        _provider, \
+        _hub_requests, \
+        _hub_latency, \
+        _aeko_runs, \
+        _aeko_latency, \
+        _aeko_cost
     global _aeko_agent_invocations, _aeko_tool_invocations
 
     if _provider is not None:
@@ -119,14 +134,18 @@ def configure(metric_reader=None) -> None:
 
     os.environ.setdefault("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", "DELTA")
 
-    service_name = os.getenv("OTEL_SERVICE_NAME", "").strip() or os.getenv("APP_NAME", "aeko-hub")
+    service_name = os.getenv("OTEL_SERVICE_NAME", "").strip() or os.getenv(
+        "APP_NAME", "aeko-hub"
+    )
     resource = Resource.create({"service.name": service_name})
 
     readers = []
     if metric_reader is not None:
         readers.append(metric_reader)
     else:
-        endpoint = _normalize_metrics_endpoint(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip())
+        endpoint = _normalize_metrics_endpoint(
+            os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+        )
         if endpoint:
             headers = _otlp_auth_headers()
             interval_ms = int(os.getenv("OTEL_METRIC_EXPORT_INTERVAL_MS", "60000"))
@@ -136,7 +155,9 @@ def configure(metric_reader=None) -> None:
                 preferred_temporality=_dynatrace_delta_temporality(),
             )
             readers.append(
-                PeriodicExportingMetricReader(exporter, export_interval_millis=interval_ms)
+                PeriodicExportingMetricReader(
+                    exporter, export_interval_millis=interval_ms
+                )
             )
 
     _provider = MeterProvider(resource=resource, metric_readers=readers)
@@ -153,7 +174,14 @@ def configure(metric_reader=None) -> None:
 
 def shutdown() -> None:
     """Flush and tear down the configured meter provider."""
-    global _provider, _meter, _hub_requests, _hub_latency, _aeko_runs, _aeko_latency, _aeko_cost
+    global \
+        _provider, \
+        _meter, \
+        _hub_requests, \
+        _hub_latency, \
+        _aeko_runs, \
+        _aeko_latency, \
+        _aeko_cost
     global _aeko_agent_invocations, _aeko_tool_invocations
     if _provider is None:
         return

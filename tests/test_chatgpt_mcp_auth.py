@@ -109,7 +109,12 @@ def www_authenticate_list(body):
     return None
 
 
-def hub_bearer(id_external_user=12345, id_external_company=90, ms_auth_access_token="ms-access", sessions=None):
+def hub_bearer(
+    id_external_user=12345,
+    id_external_company=90,
+    ms_auth_access_token="ms-access",
+    sessions=None,
+):
     """Return Authorization headers for a hub JWT with a stored ms-auth session."""
     from cmd.api.acl import mcp_auth
     from oauth.token import encode_access_token
@@ -373,7 +378,9 @@ def test_ms_auth_jwt_on_ask_aeko_is_unauthorized(oauth_env, monkeypatch):
     """Verify that a raw ms-auth Bearer is not accepted as the ChatGPT MCP token."""
     headers = {**MCP_HEADERS, "Authorization": "Bearer ms-access"}
     with make_client() as client:
-        response = post_mcp(client, call_tool("ask_aeko", {"input": "hi"}), headers=headers)
+        response = post_mcp(
+            client, call_tool("ask_aeko", {"input": "hi"}), headers=headers
+        )
     assert_unauthorized_challenge(response)
 
 
@@ -387,7 +394,9 @@ def test_hub_jwt_without_session_is_unauthorized(oauth_env):
     token = encode_access_token(12345, 90)
     headers = {**MCP_HEADERS, "Authorization": f"Bearer {token}"}
     with make_client() as client:
-        response = post_mcp(client, call_tool("ask_aeko", {"input": "hi"}), headers=headers)
+        response = post_mcp(
+            client, call_tool("ask_aeko", {"input": "hi"}), headers=headers
+        )
     assert_unauthorized_challenge(response)
 
 
@@ -446,7 +455,9 @@ def test_attach_ms_auth_access_token_keeps_non_dict_scope_state_attributes():
     assert state.chatgpt_ms_auth_access_token == "ms-access"
 
 
-def test_get_user_profile_with_hub_token_returns_ms_auth_catalog(oauth_env, monkeypatch):
+def test_get_user_profile_with_hub_token_returns_ms_auth_catalog(
+    oauth_env, monkeypatch
+):
     """Verify that get_user_profile_by_external_id over MCP returns the live ms-auth profile."""
     from cmd.api.tools import mongo_tools
     from user.user import User
@@ -454,7 +465,12 @@ def test_get_user_profile_with_hub_token_returns_ms_auth_catalog(oauth_env, monk
     class Users:
         def get_mongo_user(self, identifier):
             """Return the Mongo user for the bound ChatGPT identity."""
-            return User(id="u1", id_external_user=identifier, role="analyst", usecase="inventory")
+            return User(
+                id="u1",
+                id_external_user=identifier,
+                role="analyst",
+                usecase="inventory",
+            )
 
     mongo_tools.configure(users=Users())
     headers, _ = hub_bearer(id_external_user=12345, ms_auth_access_token="ms-access")
@@ -524,7 +540,9 @@ def test_valid_token_without_local_user_is_not_unauthorized(oauth_env):
     assert '"isError":true' in response.text.replace(" ", "")
 
 
-def test_mounted_app_challenges_ask_aeko_without_bearer(api_main, oauth_env, monkeypatch):
+def test_mounted_app_challenges_ask_aeko_without_bearer(
+    api_main, oauth_env, monkeypatch
+):
     """Verify that the production mount wraps MCP with the same 401 gate."""
     calls = []
 
@@ -591,11 +609,10 @@ def test_non_object_jsonrpc_garbage_is_unauthorized(oauth_env, monkeypatch):
 def test_catalog_tool_omitted_from_old_allowlist_still_requires_identity(
     oauth_env, monkeypatch
 ):
-    """Verify that an authenticated catalog tool still 401s unsigned when omitted from AUTHENTICATED_CHATGPT_TOOL_NAMES."""
+    """Verify that emptying AUTHENTICATED_CHATGPT_TOOL_NAMES still 401s unsigned ask_aeko."""
     monkeypatch.setattr(
-        "cmd.api.acl.mcp_auth.AUTHENTICATED_CHATGPT_TOOL_NAMES",
+        "cmd.api.acl.open_ai.constants.AUTHENTICATED_CHATGPT_TOOL_NAMES",
         set(),
-        raising=False,
     )
     calls = []
 

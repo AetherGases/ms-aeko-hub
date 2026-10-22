@@ -10,6 +10,7 @@ from oauth.constants import OAUTH_SESSION_ENCRYPTION_KEY
 
 
 def _aesgcm_key() -> bytes:
+    """Derive the AES-GCM key from the configured encryption secret."""
     raw = OAUTH_SESSION_ENCRYPTION_KEY.strip()
     if len(raw) == 64:
         try:

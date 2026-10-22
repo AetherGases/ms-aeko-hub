@@ -7,14 +7,14 @@ from typing import Any, Callable
 
 from langchain_core.tools import Tool, create_schema_from_function
 
-from cmd.api.acl.open_ai.identity import current_id_external_company, current_id_external_user
-
-_COMPANY_CHECKED_PLAN_TOOLS = {
-    "get_improvement_plan_by_inventory",
-    "get_improvement_plan_problem",
-    "get_improvement_plan_method",
-    "get_improvement_plan_reasoning",
-}
+from cmd.api.acl.open_ai.constants import (
+    ANONYMOUS_CHATGPT_TOOL_NAMES,
+    _COMPANY_CHECKED_PLAN_TOOLS,
+)
+from cmd.api.acl.open_ai.identity import (
+    current_id_external_company,
+    current_id_external_user,
+)
 
 
 def wrap_chatgpt_tools(tools: list[Tool]) -> list[Tool]:
@@ -40,7 +40,12 @@ def _strip_identity_from_description(description: str | None) -> str:
 def _assert_plan_belongs_to_user_company(id_external_inventory: Any) -> None:
     """Reject a plan that does not belong to the bound user's company."""
 
-    from cmd.api.tools.mongo_tools import _company_id, _plans, _positive_int, _user_service
+    from cmd.api.tools.mongo_tools import (
+        _company_id,
+        _plans,
+        _positive_int,
+        _user_service,
+    )
 
     identifier = _positive_int(id_external_inventory, "id_external_inventory")
     user = _user_service().get_mongo_user(current_id_external_user())
@@ -78,7 +83,9 @@ def _chatgpt_function(
         bound = public_signature.bind(*args, **kwargs)
         bound.apply_defaults()
         if check_company:
-            _assert_plan_belongs_to_user_company(bound.arguments["id_external_inventory"])
+            _assert_plan_belongs_to_user_company(
+                bound.arguments["id_external_inventory"]
+            )
         call_kwargs = dict(kwargs)
         if inject_identity:
             call_kwargs["id_external_user"] = current_id_external_user()
@@ -93,7 +100,6 @@ def _chatgpt_function(
 def _wrap_chatgpt_tool(tool: Tool) -> Tool:
     """Wrap one catalog tool for ChatGPT, leaving anonymous tools unchanged."""
 
-    from cmd.api.acl.open_ai.catalog import ANONYMOUS_CHATGPT_TOOL_NAMES
     from cmd.api.tools.constants import CHATGPT_ANALYZE_INVENTORY_DESCRIPTION
     from cmd.api.tools.inventory_tools import _analyze_inventory_chatgpt
 

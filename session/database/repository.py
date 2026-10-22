@@ -9,8 +9,10 @@ from session.session import IRepository
 
 from user.user import IRepository as IUserRepository
 
+
 class Repository(IRepository):
     def __init__(self, db):
+        """Bind the MongoDB database handle."""
         self.db = db
 
     @logged(Module.DATABASE, "session.get_user_sessions")
@@ -50,7 +52,9 @@ class Repository(IRepository):
             session_data = self.db["session"].find_one(query, projection)
             if session_data is None:
                 raise ValueError(f"No session found with id_session {id_session}.")
-            return [message_from_data(data) for data in session_data.get("messages", [])]
+            return [
+                message_from_data(data) for data in session_data.get("messages", [])
+            ]
         except ValueError as e:
             raise e
         except Exception as e:
@@ -92,7 +96,7 @@ class Repository(IRepository):
             query = q.get_save_message_query(
                 input=message.input,
                 output=message.output,
-                submitted_at=message.submitted_at
+                submitted_at=message.submitted_at,
             )
             self.db["session"].update_one(q.get_session_filter(id_session), query)
         except Exception as e:
@@ -102,7 +106,9 @@ class Repository(IRepository):
     def update_name(self, id_session: str, name: str) -> None:
         """Update the session name and modification timestamp."""
         try:
-            self.db["session"].update_one(q.get_session_filter(id_session), q.get_update_name_query(name))
+            self.db["session"].update_one(
+                q.get_session_filter(id_session), q.get_update_name_query(name)
+            )
         except Exception as e:
             raise RuntimeError(f"Error updating session name in database: {e}")
 
@@ -114,7 +120,10 @@ class Repository(IRepository):
             sessions_data = self.db["session"].find(query, projection)
             return [session_from_data(data) for data in sessions_data]
         except Exception as e:
-            raise RuntimeError(f"Error fetching recently updated sessions from database: {e}")
+            raise RuntimeError(
+                f"Error fetching recently updated sessions from database: {e}"
+            )
+
 
 def message_from_data(data: dict) -> Message:
     """Map a stored message document to a domain message."""
@@ -136,5 +145,5 @@ def session_from_data(data: dict) -> Session:
         name=data["name"],
         messages=[message_from_data(message) for message in data.get("messages", [])],
         created_at=data.get("created_at"),
-        updated_at=data.get("updated_at")
+        updated_at=data.get("updated_at"),
     )

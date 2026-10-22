@@ -79,7 +79,9 @@ def test_fastmcp_server_registers_every_catalog_tool():
 def test_fastmcp_tool_arguments_never_start_with_an_underscore():
     """Verify that private parameter names are exposed without their underscore."""
     for registered in build_mcp_server()._tool_manager.list_tools():
-        assert not any(name.startswith("_") for name in registered.parameters["properties"])
+        assert not any(
+            name.startswith("_") for name in registered.parameters["properties"]
+        )
 
 
 def test_fastmcp_tavily_map_still_runs_with_its_renamed_argument(monkeypatch):
@@ -143,7 +145,9 @@ def test_fastmcp_runs_a_slow_sync_tool_without_blocking_the_event_loop(monkeypat
             """Call the health route after the tool has started."""
             await asyncio.sleep(0.2)
             transport = httpx.ASGITransport(app=app)
-            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
                 response = await client.get("/health")
             assert response.status_code == 200
             finished.append("health")
@@ -161,8 +165,7 @@ def test_fastmcp_async_wrapper_keeps_the_published_signature():
         for tool in build_mcp_server()._tool_manager.list_tools()
     }
     properties = {
-        name: parameters["properties"]
-        for name, parameters in registered.items()
+        name: parameters["properties"] for name, parameters in registered.items()
     }
 
     assert set(properties["analyze_inventory"]) == {
@@ -173,7 +176,9 @@ def test_fastmcp_async_wrapper_keeps_the_published_signature():
     assert set(properties["get_inventory_analysis"]) == {"id"}
     nested = properties["analyze_inventory"]["file"]
     if "$ref" in nested:
-        nested = registered["analyze_inventory"]["$defs"][nested["$ref"].rsplit("/", 1)[-1]]
+        nested = registered["analyze_inventory"]["$defs"][
+            nested["$ref"].rsplit("/", 1)[-1]
+        ]
     assert set(nested["properties"]) == {
         "download_url",
         "file_id",
@@ -186,7 +191,10 @@ def test_fastmcp_async_wrapper_keeps_the_published_signature():
 def test_chatgpt_inventory_and_ask_descriptions_drive_the_partial_answer():
     """Verify that tool descriptions tell the model how to run in-chat inventory ingest."""
     descriptions = {tool.name: tool.description for tool in get_chatgpt_tools()}
-    registered = {tool.name: tool.description for tool in build_mcp_server()._tool_manager.list_tools()}
+    registered = {
+        tool.name: tool.description
+        for tool in build_mcp_server()._tool_manager.list_tools()
+    }
     analyze = descriptions["analyze_inventory"]
 
     for text in (analyze, registered["analyze_inventory"]):
@@ -212,12 +220,14 @@ def test_fastmcp_tools_keep_the_catalog_descriptions():
 
 def test_authenticated_chatgpt_tools_declare_oauth2_security_schemes():
     """Verify that authenticated chatgpt tools declare oauth2 security schemes."""
-    from cmd.api.acl.open_ai.catalog import AUTHENTICATED_CHATGPT_TOOL_NAMES
+    from cmd.api.acl.open_ai.constants import AUTHENTICATED_CHATGPT_TOOL_NAMES
     from cmd.api.acl.open_ai.server import build_mcp_server
 
     for registered in build_mcp_server()._tool_manager.list_tools():
         meta = registered.meta or {}
-        schemes = meta.get("securitySchemes") or getattr(registered, "securitySchemes", None)
+        schemes = meta.get("securitySchemes") or getattr(
+            registered, "securitySchemes", None
+        )
         if registered.name in AUTHENTICATED_CHATGPT_TOOL_NAMES:
             assert schemes == [{"type": "oauth2", "scopes": ["mcp"]}]
         else:
@@ -232,3 +242,11 @@ def test_generic_mcp_server_module_does_not_build_chatgpt():
     assert hasattr(mcp_server, "run_in_worker_thread")
     assert not hasattr(mcp_server, "build_mcp_server")
     assert not hasattr(mcp_server, "mcp")
+
+
+def test_chatgpt_tool_allowlists_are_not_reexported_from_catalog():
+    """Keep ChatGPT allowlists on constants so unused-import cleanup cannot drop MCP auth."""
+    import cmd.api.acl.open_ai.catalog as catalog
+
+    assert not hasattr(catalog, "ANONYMOUS_CHATGPT_TOOL_NAMES")
+    assert not hasattr(catalog, "AUTHENTICATED_CHATGPT_TOOL_NAMES")

@@ -35,7 +35,9 @@ def get_all_metrics_query() -> tuple[dict, dict]:
     return {}, {}
 
 
-def get_company_cost_query(id_external_company: int, since: datetime) -> tuple[dict, dict]:
+def get_company_cost_query(
+    id_external_company: int, since: datetime
+) -> tuple[dict, dict]:
     """Build the filter and projection for company costs at or after the supplied time."""
     return (
         {"id_external_company": id_external_company, "created_at": {"$gte": since}},

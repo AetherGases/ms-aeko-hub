@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+
 class AgentMetric:
     """What one agent *invocation* of a run consumed."""
 
@@ -11,8 +12,15 @@ class AgentMetric:
     llm: str
     used_tools: list[str]
 
-    def __init__(self, name: str, input_tokens: int = 0, output_tokens: int = 0,
-                 llm: str = "", used_tools: list[str] | None = None):
+    def __init__(
+        self,
+        name: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        llm: str = "",
+        used_tools: list[str] | None = None,
+    ):
+        """Store token, model, and tool usage for one agent invocation."""
         self.name = name
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
@@ -34,12 +42,20 @@ class Metric:
     id_external_company: int | None
     created_at: datetime | None
 
-    def __init__(self, id_request: str, latency: int, flow: str,
-                 used_agents: list[AgentMetric] | None = None,
-                 error_description: str | None = None, id: str | None = None,
-                 cost_usd: float = 0.0, id_external_user: int | None = None,
-                 id_external_company: int | None = None,
-                 created_at: datetime | None = None):
+    def __init__(
+        self,
+        id_request: str,
+        latency: int,
+        flow: str,
+        used_agents: list[AgentMetric] | None = None,
+        error_description: str | None = None,
+        id: str | None = None,
+        cost_usd: float = 0.0,
+        id_external_user: int | None = None,
+        id_external_company: int | None = None,
+        created_at: datetime | None = None,
+    ):
+        """Store the fields of one SDK run metric."""
         self.id = id
         self.id_request = id_request
         self.latency = latency
@@ -59,6 +75,7 @@ class UserCost:
     cost_usd: float
 
     def __init__(self, id_external_user: int, cost_usd: float):
+        """Store the USD cost attributed to one external user."""
         self.id_external_user = id_external_user
         self.cost_usd = cost_usd
 
@@ -70,7 +87,13 @@ class CompanyCost:
     cost_usd: float
     users: list[UserCost]
 
-    def __init__(self, id_external_company: int, cost_usd: float, users: list[UserCost] | None = None):
+    def __init__(
+        self,
+        id_external_company: int,
+        cost_usd: float,
+        users: list[UserCost] | None = None,
+    ):
+        """Store company cost totals and per-user breakdowns."""
         self.id_external_company = id_external_company
         self.cost_usd = cost_usd
         self.users = list(users or [])

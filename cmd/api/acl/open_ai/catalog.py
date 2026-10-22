@@ -23,35 +23,6 @@ from cmd.api.tools.mongo_tools import (
     get_user_memory_tools,
 )
 
-ANONYMOUS_CHATGPT_TOOL_NAMES = {
-    "query_gases_info",
-    "climatiq_search",
-    "climatiq_estimate",
-    "calculator",
-    "calculate_roi",
-    "calculate_payback",
-}
-
-AUTHENTICATED_CHATGPT_TOOL_NAMES = {
-    "ask_aeko",
-    "analyze_inventory",
-    "get_inventory_analysis",
-    "get_user_profile_by_external_id",
-    "list_user_memory_fields",
-    "get_user_memory_by_field",
-    "list_user_memories",
-    "list_user_session_names",
-    "get_session_messages_by_name",
-    "get_latest_session_messages",
-    "count_user_sessions",
-    "get_improvement_plan_by_inventory",
-    "get_improvement_plan_problem",
-    "get_improvement_plan_method",
-    "get_improvement_plan_reasoning",
-    "list_latest_improvement_plans",
-    "query_improvement_plan_problems",
-}
-
 _CATALOG_GETTERS = (
     get_improvement_plan_tools,
     get_improvement_plan_problem_tools,

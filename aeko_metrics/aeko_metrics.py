@@ -5,6 +5,7 @@ from datetime import datetime
 
 from aeko_metrics.entity import CompanyCost, Metric
 
+
 class IRepository(ABC):
     @abstractmethod
     def create_metric(self, metric: Metric) -> Metric:
@@ -17,9 +18,12 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
-    def get_company_metrics(self, id_external_company: int, since: datetime) -> list[Metric]:
+    def get_company_metrics(
+        self, id_external_company: int, since: datetime
+    ) -> list[Metric]:
         """Retrieve metrics for one company at or after the supplied time."""
         pass
+
 
 class IService(ABC):
     @abstractmethod

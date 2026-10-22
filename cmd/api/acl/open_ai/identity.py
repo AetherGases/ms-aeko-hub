@@ -2,14 +2,23 @@
 
 from contextvars import ContextVar
 
-_id_external_user: ContextVar[int | None] = ContextVar("chatgpt_id_external_user", default=None)
-_id_external_company: ContextVar[int | None] = ContextVar("chatgpt_id_external_company", default=None)
-_ms_auth_access_token: ContextVar[str | None] = ContextVar("ms_auth_access_token", default=None)
+from cmd.api.acl.open_ai.constants import (
+    _SCOPE_STATE_COMPANY_KEY,
+    _SCOPE_STATE_KEY,
+    _SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY,
+    _SCOPE_STATE_MS_AUTH_PROFILE_KEY,
+)
+
+_id_external_user: ContextVar[int | None] = ContextVar(
+    "chatgpt_id_external_user", default=None
+)
+_id_external_company: ContextVar[int | None] = ContextVar(
+    "chatgpt_id_external_company", default=None
+)
+_ms_auth_access_token: ContextVar[str | None] = ContextVar(
+    "ms_auth_access_token", default=None
+)
 _ms_auth_profile: ContextVar[dict | None] = ContextVar("ms_auth_profile", default=None)
-_SCOPE_STATE_KEY = "chatgpt_id_external_user"
-_SCOPE_STATE_COMPANY_KEY = "chatgpt_id_external_company"
-_SCOPE_STATE_MS_AUTH_PROFILE_KEY = "chatgpt_ms_auth_profile"
-_SCOPE_STATE_MS_AUTH_ACCESS_TOKEN_KEY = "chatgpt_ms_auth_access_token"
 
 
 def bind_id_external_user(id_external_user: int):
@@ -145,6 +154,7 @@ def current_id_external_company() -> int:
 
 
 def _id_external_user_from_mcp_request() -> int | None:
+    """Read the bound user id from an MCP request, if present."""
     try:
         from mcp.server.lowlevel.server import request_ctx
 
@@ -157,6 +167,7 @@ def _id_external_user_from_mcp_request() -> int | None:
 
 
 def _id_external_company_from_mcp_request() -> int | None:
+    """Read the bound company id from an MCP request, if present."""
     try:
         from mcp.server.lowlevel.server import request_ctx
 
@@ -169,6 +180,7 @@ def _id_external_company_from_mcp_request() -> int | None:
 
 
 def _ms_auth_profile_from_mcp_request() -> dict | None:
+    """Read the bound ms-auth profile from an MCP request, if present."""
     try:
         from mcp.server.lowlevel.server import request_ctx
 
@@ -181,6 +193,7 @@ def _ms_auth_profile_from_mcp_request() -> dict | None:
 
 
 def _ms_auth_access_token_from_mcp_request() -> str | None:
+    """Read the bound ms-auth access token from an MCP request, if present."""
     try:
         from mcp.server.lowlevel.server import request_ctx
 

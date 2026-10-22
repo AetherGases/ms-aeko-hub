@@ -51,9 +51,7 @@ def upload_signed_file(
         raise CloudinaryError(f"Could not reach Cloudinary at {url}: {exc}") from exc
 
     if response.status_code >= 400:
-        raise CloudinaryError(
-            f"Cloudinary answered {response.status_code} for {url}."
-        )
+        raise CloudinaryError(f"Cloudinary answered {response.status_code} for {url}.")
 
     try:
         payload: Any = response.json()

@@ -5,8 +5,10 @@ from datetime import datetime, timedelta
 from aeko_metrics.aeko_metrics import IService
 from aeko_metrics.entity import CompanyCost, Metric, UserCost
 
+
 class Service(IService):
     def __init__(self, repository):
+        """Bind the metrics repository."""
         self.repository = repository
 
     def add_metric(self, metric: Metric) -> Metric:

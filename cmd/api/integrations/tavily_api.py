@@ -36,11 +36,13 @@ def _client(api_key: str | None = None) -> TavilyClient:
 
 @logged(Module.TOOL, "tavily_search")
 def _tavily_search(query: str) -> Any:
+    """Run a Tavily web search and return serialized results."""
     return _client().search(query)
 
 
 @logged(Module.TOOL, "tavily_research")
 def _tavily_research(query: str) -> Any:
+    """Run a Tavily research query and return serialized results."""
     return _client().search(query, search_depth="advanced")
 
 
@@ -56,7 +58,11 @@ def get_tavily_search_tools() -> list[Tool]:
     """Return Tavily web search and research tools."""
 
     return [
-        Tool(name="tavily_search", description=TAVILY_SEARCH_DESCRIPTION, func=_tavily_search),
+        Tool(
+            name="tavily_search",
+            description=TAVILY_SEARCH_DESCRIPTION,
+            func=_tavily_search,
+        ),
         Tool(
             name="tavily_research",
             description=TAVILY_RESEARCH_DESCRIPTION,
@@ -69,5 +75,9 @@ def get_tavily_site_map_tool() -> list[Tool]:
     """Return a Tavily site-map tool restricted to the configured Aether URL."""
 
     return [
-        Tool(name="tavily_map", description=TAVILY_MAP_DESCRIPTION, func=_tavily_map_aether_site),
+        Tool(
+            name="tavily_map",
+            description=TAVILY_MAP_DESCRIPTION,
+            func=_tavily_map_aether_site,
+        ),
     ]

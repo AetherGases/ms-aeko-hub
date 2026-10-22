@@ -51,6 +51,7 @@ class IRepository(ABC):
         """Retrieve sessions whose modification time is at or after the supplied instant."""
         pass
 
+
 class IService(ABC):
     @abstractmethod
     def get_user_sessions(self, id_external_user) -> list[Session]:
@@ -76,5 +77,8 @@ class IService(ABC):
         pass
 
     @abstractmethod
-    def _validate_session_and_user_allowance(self, id_session: str, id_user: str) -> bool:
+    def _validate_session_and_user_allowance(
+        self, id_session: str, id_user: str
+    ) -> bool:
+        """Reject oversized sessions and users who do not own them."""
         pass

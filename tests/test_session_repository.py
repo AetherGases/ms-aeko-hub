@@ -190,7 +190,9 @@ def test_get_session_messages_wraps_database_failures_in_runtime_error():
 
 def test_get_session_messages_count_returns_the_size():
     """Verify that get session messages count returns the size."""
-    repository, _ = build_repository(StubCollection(find_one_result={"messages_count": 3}))
+    repository, _ = build_repository(
+        StubCollection(find_one_result={"messages_count": 3})
+    )
 
     assert repository.get_session_messages_count(ID_SESSION) == 3
 
@@ -216,7 +218,10 @@ def test_create_session_returns_the_new_identifier():
     collection = StubCollection(inserted_id=ObjectId(ID_SESSION))
     repository, _ = build_repository(collection)
 
-    assert repository.create_session(ID_USER, StubUserRepository(user=object())) == ID_SESSION
+    assert (
+        repository.create_session(ID_USER, StubUserRepository(user=object()))
+        == ID_SESSION
+    )
 
 
 def test_create_session_stores_the_owner_and_an_empty_history():
@@ -313,13 +318,18 @@ def test_message_from_data_reads_the_stored_field_names():
     """Verify that message from data reads the stored field names."""
     message = message_from_data(MESSAGE_DOCUMENT)
 
-    assert (message.input, message.output) == ("Summarize this session.", "Here is the summary.")
+    assert (message.input, message.output) == (
+        "Summarize this session.",
+        "Here is the summary.",
+    )
     assert message.submitted_at == SUBMITTED_AT
 
 
 def test_message_from_data_ignores_what_a_turn_used_to_carry():
     """Verify that message mapping ignores additional model and token fields."""
-    message = message_from_data({**MESSAGE_DOCUMENT, "llm": "m", "input_tokens": 1, "output_tokens": 2})
+    message = message_from_data(
+        {**MESSAGE_DOCUMENT, "llm": "m", "input_tokens": 1, "output_tokens": 2}
+    )
 
     assert set(vars(message)) == {"input", "output", "submitted_at"}
 
@@ -327,7 +337,13 @@ def test_message_from_data_ignores_what_a_turn_used_to_carry():
 def test_message_from_data_ignores_the_response_field_names():
     """Verify that message from data ignores the response field names."""
     with pytest.raises(KeyError):
-        message_from_data({"input_message": "in", "output_message": "out", "submitted_at": SUBMITTED_AT})
+        message_from_data(
+            {
+                "input_message": "in",
+                "output_message": "out",
+                "submitted_at": SUBMITTED_AT,
+            }
+        )
 
 
 def test_message_from_data_ignores_the_legacy_misspelled_output():
@@ -340,7 +356,11 @@ def test_session_from_data_maps_the_document():
     """Verify that session from data maps the document."""
     session = session_from_data(SESSION_DOCUMENT)
 
-    assert (session.id, session.id_user, session.name) == (ID_SESSION, ID_USER, "Weekly emissions review")
+    assert (session.id, session.id_user, session.name) == (
+        ID_SESSION,
+        ID_USER,
+        "Weekly emissions review",
+    )
     assert session.messages == []
 
 
@@ -357,7 +377,9 @@ def test_session_from_data_maps_embedded_messages_into_entities():
 
 def test_session_from_data_renders_an_object_id_owner_as_text():
     """Verify that session from data renders an object id owner as text."""
-    session = session_from_data({**SESSION_DOCUMENT, "_id": ObjectId(ID_SESSION), "id_user": ObjectId(ID_USER)})
+    session = session_from_data(
+        {**SESSION_DOCUMENT, "_id": ObjectId(ID_SESSION), "id_user": ObjectId(ID_USER)}
+    )
 
     assert (session.id, session.id_user) == (ID_SESSION, ID_USER)
 
@@ -374,7 +396,10 @@ def test_session_filter_accepts_an_identifier_that_is_already_an_object_id():
     """Verify that session filter accepts an identifier that is already an object id."""
     object_id = ObjectId(ID_SESSION)
 
-    assert q.get_session_filter(object_id)["$or"] == [{"_id": object_id}, {"_id": object_id}]
+    assert q.get_session_filter(object_id)["$or"] == [
+        {"_id": object_id},
+        {"_id": object_id},
+    ]
 
 
 def test_session_filter_keeps_identifiers_that_are_not_object_ids():

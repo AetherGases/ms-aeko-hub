@@ -79,7 +79,9 @@ def test_report_route_is_registered_on_the_application(api_main):
 
 def test_swagger_yaml_documents_ms_auth_bearer_on_protected_routes():
     """Verify that swagger.yaml marks protected routes with MsAuthBearer security."""
-    swagger = (Path(__file__).resolve().parent.parent / "swagger.yaml").read_text(encoding="utf-8")
+    swagger = (Path(__file__).resolve().parent.parent / "swagger.yaml").read_text(
+        encoding="utf-8"
+    )
     assert "securitySchemes:" in swagger
     assert "MsAuthBearer:" in swagger
     assert "scheme: bearer" in swagger
@@ -143,14 +145,22 @@ def test_oauth_well_known_routes_are_registered(api_main):
 
 def test_chatgpt_mcp_app_is_mounted_at_the_documented_prefix(api_main):
     """Verify that the ChatGPT MCP app is mounted at the documented prefix."""
-    mounted = [route for route in api_main.app.routes if getattr(route, "path", None) == MCP_PREFIX]
+    mounted = [
+        route
+        for route in api_main.app.routes
+        if getattr(route, "path", None) == MCP_PREFIX
+    ]
 
     assert len(mounted) == 1
 
 
 def test_chatgpt_mcp_mount_does_not_double_the_inner_path(api_main):
     """Verify that the mounted MCP app serves at its root, not under another /mcp."""
-    (mounted,) = [route for route in api_main.app.routes if getattr(route, "path", None) == MCP_PREFIX]
+    (mounted,) = [
+        route
+        for route in api_main.app.routes
+        if getattr(route, "path", None) == MCP_PREFIX
+    ]
     inner_paths = {getattr(route, "path", None) for route in mounted.app.routes}
 
     assert "/" in inner_paths
@@ -181,7 +191,10 @@ def test_lifespan_configures_and_clears_the_chatgpt_tool_bindings(api_main):
 
 def test_chatgpt_mcp_accepts_initialize_on_a_public_host(api_main):
     """Verify that the mounted MCP endpoint answers initialize for a non-localhost host."""
-    headers = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    headers = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+    }
     body = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -214,7 +227,9 @@ def test_chatgpt_mcp_session_manager_runs_inside_the_lifespan(api_main):
 def test_report_route_is_reachable(api_main):
     """Verify that report route is reachable."""
     with TestClient(api_main.app) as client:
-        response = client.post(REPORT_ROUTE, json={}, headers=INVENTORY_REPORT_AUTH_HEADERS)
+        response = client.post(
+            REPORT_ROUTE, json={}, headers=INVENTORY_REPORT_AUTH_HEADERS
+        )
 
     assert response.status_code != 404
 
@@ -233,6 +248,7 @@ def test_report_route_still_validates_its_body(api_main):
 
 def test_lifespan_fails_when_the_database_does_not_answer(api_main, monkeypatch):
     """Verify that lifespan fails when the database does not answer."""
+
     class UnreachableDatabase:
         def command(self, name):
             """Record a database command and return a simulated success response."""
@@ -285,7 +301,9 @@ def test_session_dependency_injects_the_cache_when_redis_is_configured():
 
 def test_report_dependency_builds_a_service_backed_by_the_concrete_repository():
     """Verify that report dependency builds a service backed by the concrete repository."""
-    service = improvement_plan_handlers.get_improvement_plan_service(request_with(StubDatabase()))
+    service = improvement_plan_handlers.get_improvement_plan_service(
+        request_with(StubDatabase())
+    )
 
     assert isinstance(service, ImprovementPlanService)
     assert isinstance(service.repository, ImprovementPlanRepository)
@@ -351,7 +369,9 @@ def test_get_user_sessions_runs_through_the_concrete_repository():
         user=StubCollection(find_one_result=USER_DOCUMENT),
     )
 
-    response = build_client(session_handlers.router, database).get("/ai/sessions/user/12345")
+    response = build_client(session_handlers.router, database).get(
+        "/ai/sessions/user/12345"
+    )
 
     assert response.status_code == 200
     assert response.json() == [{"id": ID_SESSION, "name": "Weekly emissions review"}]
@@ -361,18 +381,26 @@ def test_get_session_messages_runs_through_the_concrete_repository():
     """Verify that get session messages runs through the concrete repository."""
     document = {
         **SESSION_DOCUMENT,
-        "messages": [{"input": "hi", "output": "ho", "submitted_at": "2026-07-26T14:30:00"}],
+        "messages": [
+            {"input": "hi", "output": "ho", "submitted_at": "2026-07-26T14:30:00"}
+        ],
     }
     database = StubDatabase(
         user=StubCollection(find_one_result=USER_DOCUMENT),
         session=StubCollection(find_one_results=[SESSION_DOCUMENT, document]),
     )
 
-    response = build_client(session_handlers.router, database).get(f"/ai/session/{ID_SESSION}/messages")
+    response = build_client(session_handlers.router, database).get(
+        f"/ai/session/{ID_SESSION}/messages"
+    )
 
     assert response.status_code == 200
     assert response.json() == [
-        {"input_message": "hi", "output_message": "ho", "submitted_at": "2026-07-26T14:30:00"}
+        {
+            "input_message": "hi",
+            "output_message": "ho",
+            "submitted_at": "2026-07-26T14:30:00",
+        }
     ]
 
 
@@ -389,7 +417,12 @@ MESSAGES_DOCUMENT = {
 
 def session_reads():
     """Record session reads through the application wiring."""
-    return [{"messages_count": 0}, SESSION_DOCUMENT, SESSION_DOCUMENT, MESSAGES_DOCUMENT]
+    return [
+        {"messages_count": 0},
+        SESSION_DOCUMENT,
+        SESSION_DOCUMENT,
+        MESSAGES_DOCUMENT,
+    ]
 
 
 def test_send_message_runs_through_the_concrete_repositories(api_main, configured_sdk):
@@ -434,11 +467,18 @@ def test_send_message_hands_the_real_dtos_to_the_sdk(api_main, configured_sdk):
     assert [turn.input for turn in session.messages][0] == "Summarize this session."
 
 
-def test_send_message_returns_400_when_the_user_does_not_own_the_session(api_main, configured_sdk):
+def test_send_message_returns_400_when_the_user_does_not_own_the_session(
+    api_main, configured_sdk
+):
     """Verify that send message returns 400 when the user does not own the session."""
     foreign_session = {**SESSION_DOCUMENT, "id_user": "someone-else"}
     session_collection = StubCollection(
-        find_one_results=[{"messages_count": 0}, foreign_session, foreign_session, MESSAGES_DOCUMENT]
+        find_one_results=[
+            {"messages_count": 0},
+            foreign_session,
+            foreign_session,
+            MESSAGES_DOCUMENT,
+        ]
     )
     database = StubDatabase(
         session=session_collection,
@@ -472,7 +512,9 @@ def test_send_message_fails_when_the_sdk_was_never_configured(api_main):
     assert "not configured" not in response.text
 
 
-def test_send_message_updates_company_on_an_existing_mongo_user(api_main, configured_sdk):
+def test_send_message_updates_company_on_an_existing_mongo_user(
+    api_main, configured_sdk
+):
     """Verify that send message persists the principal company on an existing Mongo user."""
     existing = {**USER_DOCUMENT, "id_external_company": 80}
     user_collection = StubCollection(find_one_result=existing)

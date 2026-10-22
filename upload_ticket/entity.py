@@ -2,12 +2,6 @@
 
 from dataclasses import dataclass
 
-STATE_WAITING_FOR_UPLOAD = "waiting_for_upload"
-STATE_UPLOADED = "uploaded"
-STATE_CONSUMED = "consumed"
-
-VALID_FILE_TYPES = frozenset({"IMAGE", "XLSX"})
-
 
 @dataclass(frozen=True)
 class UploadTicket:

@@ -16,6 +16,7 @@ from internal.shared.request_log import Record, collect
 
 
 def _subject(name: str, detail: str) -> str:
+    """Return a printable subject label for an operation."""
     return f"{name} {detail}".strip()
 
 

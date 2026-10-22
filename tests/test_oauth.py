@@ -90,7 +90,11 @@ def oauth_env(monkeypatch):
 
 def authenticated_login(email, password):
     """Return a successful auth-microservice payload for the given credentials."""
-    return {"authenticated": True, "accessToken": "ms-access", "refreshToken": "ms-refresh"}
+    return {
+        "authenticated": True,
+        "accessToken": "ms-access",
+        "refreshToken": "ms-refresh",
+    }
 
 
 def stub_sign_in(monkeypatch, profile=None, profile_error=None):
@@ -220,7 +224,9 @@ def test_authorize_applies_sign_in_profile_after_authentication(monkeypatch, oau
     ]
 
 
-def test_authorize_skips_provisioning_when_users_service_is_not_configured(monkeypatch, oauth_env):
+def test_authorize_skips_provisioning_when_users_service_is_not_configured(
+    monkeypatch, oauth_env
+):
     """Verify that authorize still works when no Mongo users service is wired."""
     from oauth.service import Service
 
@@ -405,7 +411,9 @@ def test_authorize_rejects_non_s256_code_challenge_method(monkeypatch, oauth_env
     from oauth.service import Service
 
     called = []
-    monkeypatch.setattr("oauth.service.login", lambda email, password: called.append("login"))
+    monkeypatch.setattr(
+        "oauth.service.login", lambda email, password: called.append("login")
+    )
     with pytest.raises(ValueError):
         authorize(Service(InMemoryCodes()), code_challenge_method="plain")
     assert called == []
@@ -427,7 +435,9 @@ def test_authorize_rejects_unknown_client_id(monkeypatch, oauth_env):
     from oauth.service import Service
 
     called = []
-    monkeypatch.setattr("oauth.service.login", lambda email, password: called.append("login"))
+    monkeypatch.setattr(
+        "oauth.service.login", lambda email, password: called.append("login")
+    )
     with pytest.raises(ValueError):
         authorize(Service(InMemoryCodes()), client_id="evil")
     assert called == []
@@ -438,7 +448,9 @@ def test_authorize_rejects_unknown_redirect_uri(monkeypatch, oauth_env):
     from oauth.service import Service
 
     called = []
-    monkeypatch.setattr("oauth.service.login", lambda email, password: called.append("login"))
+    monkeypatch.setattr(
+        "oauth.service.login", lambda email, password: called.append("login")
+    )
     with pytest.raises(ValueError):
         authorize(
             Service(InMemoryCodes()),
@@ -534,7 +546,11 @@ def test_session_repository_saves_and_gets_by_access_token():
     repository = Repository(redis)
     repository.save(
         "hub.jwt",
-        {"ms_auth_access_token": "ms-access", "id_external_user": 7, "id_external_company": 90},
+        {
+            "ms_auth_access_token": "ms-access",
+            "id_external_user": 7,
+            "id_external_company": 90,
+        },
         1800,
     )
     assert repository.get("hub.jwt") == {
@@ -617,7 +633,6 @@ def test_redis_repository_omits_plaintext_ms_auth_token(oauth_env):
 
 
 def test_session_repository_redis_value_omits_plaintext_ms_auth_token():
-
     """Verify that the Redis session value does not contain the plaintext ms-auth token."""
     from oauth.cache.key import session_key
     from oauth.cache.session_repository import Repository

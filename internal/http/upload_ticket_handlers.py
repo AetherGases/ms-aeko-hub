@@ -15,7 +15,9 @@ from upload_ticket.upload_ticket import IService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["Inventory Upload"], dependencies=[Depends(require_ms_auth_principal)])
+router = APIRouter(
+    tags=["Inventory Upload"], dependencies=[Depends(require_ms_auth_principal)]
+)
 
 
 class CompleteRequest(BaseModel):
@@ -81,8 +83,12 @@ def _raise_for_value_error(exc: ValueError) -> None:
             },
         },
         404: {"description": "Upload ticket not found for the given user."},
-        400: {"description": "The upload ticket is not available for signature redemption."},
-        502: {"description": "The Cloudinary microservice could not return a signature."},
+        400: {
+            "description": "The upload ticket is not available for signature redemption."
+        },
+        502: {
+            "description": "The Cloudinary microservice could not return a signature."
+        },
         503: {"description": "Redis connection is unavailable."},
         500: {"description": "Unexpected server error."},
     },

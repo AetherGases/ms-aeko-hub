@@ -1,7 +1,6 @@
 """Build the FastMCP server that serves the ChatGPT tool catalog over HTTP."""
 
 import os
-from pathlib import Path
 from urllib.parse import urlparse
 
 from mcp.server.fastmcp import FastMCP
@@ -9,34 +8,21 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from cmd.api.acl.mcp_server import run_in_worker_thread
 from cmd.api.acl.open_ai.catalog import get_chatgpt_tools
-from cmd.api.acl.open_ai.mcp_meta import INVENTORY_WIDGET_URI, tool_meta
-
-SERVER_NAME = "aeko-chatgpt"
-INVENTORY_WIDGET_MIME = "text/html;profile=mcp-app"
-INVENTORY_WIDGET_PATH = (
-    Path(__file__).resolve().parent / "widgets" / "analyze_inventory.html"
+from cmd.api.acl.open_ai.constants import (
+    INVENTORY_WIDGET_MIME,
+    INVENTORY_WIDGET_PATH,
+    INVENTORY_WIDGET_URI,
+    SERVER_NAME,
+    _BIND_ALL_HOSTS,
+    _CHATGPT_ORIGINS,
+    _LOCAL_HOSTS,
+    _LOCAL_ORIGINS,
 )
-
-
-_LOCAL_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
-_LOCAL_ORIGINS = [
-    "http://127.0.0.1:*",
-    "http://localhost:*",
-    "http://[::1]:*",
-    "https://127.0.0.1:*",
-    "https://localhost:*",
-    "https://[::1]:*",
-]
-_CHATGPT_ORIGINS = [
-    "https://chatgpt.com",
-    "https://chatgpt.com:*",
-    "https://chat.openai.com",
-    "https://chat.openai.com:*",
-]
-_BIND_ALL_HOSTS = frozenset({"0.0.0.0", "::", "[::]"})
+from cmd.api.acl.open_ai.mcp_meta import tool_meta
 
 
 def _unique(values: list[str]) -> list[str]:
+    """Return values in order with duplicates removed."""
     seen: set[str] = set()
     ordered: list[str] = []
     for value in values:
@@ -48,6 +34,7 @@ def _unique(values: list[str]) -> list[str]:
 
 
 def _hosts_from_url(url: str) -> tuple[list[str], list[str]]:
+    """Extract allowed hosts and origins from a configured URL."""
     parsed = urlparse((url or "").strip())
     hosts: list[str] = []
     origins: list[str] = []
@@ -63,6 +50,7 @@ def _hosts_from_url(url: str) -> tuple[list[str], list[str]]:
 
 
 def _transport_security() -> TransportSecuritySettings:
+    """Build DNS-rebinding protection settings for the MCP server."""
     allowed_hosts: list[str] = []
     allowed_origins = list(_CHATGPT_ORIGINS)
     for value in (

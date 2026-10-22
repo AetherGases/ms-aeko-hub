@@ -47,7 +47,12 @@ def build_client(service=None, db="fake-db", id_external_user=12345):
 def test_get_user_returns_profile():
     """Verify that get user returns profile."""
     service = StubUserService(
-        user=User(id="65a8b3d6c0f8e1d7f4b2c010", id_external_user=12345, role="analyst", usecase="report_generation")
+        user=User(
+            id="65a8b3d6c0f8e1d7f4b2c010",
+            id_external_user=12345,
+            role="analyst",
+            usecase="report_generation",
+        )
     )
     response = build_client(service).get(ROUTE.format(id_external_user=12345))
 
@@ -79,7 +84,9 @@ def test_get_user_returns_id_external_company_when_set():
 
 def test_get_user_forwards_the_path_parameter_as_int():
     """Verify that get user forwards the path parameter as int."""
-    service = StubUserService(user=User(id="1", id_external_user=999, role="admin", usecase="audit"))
+    service = StubUserService(
+        user=User(id="1", id_external_user=999, role="admin", usecase="audit")
+    )
     build_client(service, id_external_user=999).get(ROUTE.format(id_external_user=999))
 
     assert service.calls == [999]
@@ -88,7 +95,9 @@ def test_get_user_forwards_the_path_parameter_as_int():
 def test_get_user_maps_value_error_to_404():
     """Verify that get user maps value error to 404."""
     service = StubUserService(error=ValueError("User not found."))
-    response = build_client(service, id_external_user=404).get(ROUTE.format(id_external_user=404))
+    response = build_client(service, id_external_user=404).get(
+        ROUTE.format(id_external_user=404)
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "User not found."
@@ -97,7 +106,9 @@ def test_get_user_maps_value_error_to_404():
 def test_get_user_maps_unexpected_error_to_500():
     """Verify that get user maps unexpected error to a generic 500."""
     service = StubUserService(error=RuntimeError("mongo exploded"))
-    response = build_client(service, id_external_user=1).get(ROUTE.format(id_external_user=1))
+    response = build_client(service, id_external_user=1).get(
+        ROUTE.format(id_external_user=1)
+    )
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Unexpected server error."
@@ -109,7 +120,9 @@ def test_get_user_returns_403_when_path_user_does_not_match_token():
     service = StubUserService(
         user=User(id="1", id_external_user=12345, role="analyst", usecase="chat")
     )
-    response = build_client(service, id_external_user=12345).get(ROUTE.format(id_external_user=99999))
+    response = build_client(service, id_external_user=12345).get(
+        ROUTE.format(id_external_user=99999)
+    )
 
     assert response.status_code == 403
     assert service.calls == []

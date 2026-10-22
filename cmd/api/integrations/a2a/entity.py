@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 
-A2A_SENDER_CHATGPT = "chatgpt"
-A2A_RECIPIENT_AEKO = "aeko"
+from cmd.api.integrations.a2a.constants import A2A_RECIPIENT_AEKO, A2A_SENDER_CHATGPT
 
 
 @dataclass(frozen=True)

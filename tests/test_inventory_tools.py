@@ -186,7 +186,9 @@ def test_analyze_inventory_rejects_unknown_file_type(services):
     assert tickets.create_calls == []
 
 
-def test_analyze_inventory_second_call_posts_inventory_and_strips_storage_file(services):
+def test_analyze_inventory_second_call_posts_inventory_and_strips_storage_file(
+    services,
+):
     """Submit the uploaded file and expose only the inventory contract."""
 
     tickets, create_inventory, _ = services
@@ -306,9 +308,7 @@ def test_get_inventory_analysis_processing_when_plan_missing(services):
     tickets.created = {12345: [1]}
     plans.missing = True
 
-    assert inventory_tools._get_inventory_analysis(12345, 1) == {
-        "status": "PROCESSING"
-    }
+    assert inventory_tools._get_inventory_analysis(12345, 1) == {"status": "PROCESSING"}
 
 
 def test_get_inventory_analysis_returns_report_contract(services):

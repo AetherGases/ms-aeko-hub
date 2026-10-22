@@ -5,8 +5,10 @@ from user.database import query as q
 from user.entity import User, UserMemory
 from user.user import IRepository
 
+
 class Repository(IRepository):
     def __init__(self, db):
+        """Bind the MongoDB database handle."""
         self.db = db
 
     @logged(Module.DATABASE, "user.create_user")
@@ -48,7 +50,9 @@ class Repository(IRepository):
             )
             result = self.db.user.update_one(query, update)
             if result.matched_count == 0:
-                raise ValueError(f"User with id_external_user {id_external_user} not found.")
+                raise ValueError(
+                    f"User with id_external_user {id_external_user} not found."
+                )
             return self.get_user(id_external_user)
         except ValueError as e:
             raise e
@@ -70,7 +74,9 @@ class Repository(IRepository):
             )
             result = self.db.user.update_one(query, update)
             if result.matched_count == 0:
-                raise ValueError(f"User with id_external_user {id_external_user} not found.")
+                raise ValueError(
+                    f"User with id_external_user {id_external_user} not found."
+                )
         except ValueError as e:
             raise e
         except Exception as e:
@@ -82,7 +88,9 @@ class Repository(IRepository):
         try:
             user_data = self.db.user.find_one(q.get_user_query_filter(id_external_user))
             if not user_data:
-                raise ValueError(f"User with id_external_user {id_external_user} not found.")
+                raise ValueError(
+                    f"User with id_external_user {id_external_user} not found."
+                )
             return user_from_data(user_data)
         except ValueError as e:
             raise e
@@ -113,8 +121,9 @@ class Repository(IRepository):
                     field=memory["field"],
                     description=memory["description"],
                     created_at=memory.get("created_at"),
-                    expires_at=memory.get("expires_at")
-                ) for memory in memories_data
+                    expires_at=memory.get("expires_at"),
+                )
+                for memory in memories_data
             ]
         except Exception as e:
             raise RuntimeError(f"Error fetching user memories from database: {e}")
@@ -133,10 +142,13 @@ class Repository(IRepository):
     def set_id_external_company(self, id_user: str, id_external_company: int) -> None:
         """Persist the company identifier on the user document."""
         try:
-            query, update = q.set_id_external_company_query(id_user, id_external_company)
+            query, update = q.set_id_external_company_query(
+                id_user, id_external_company
+            )
             self.db.user.update_one(query, update)
         except Exception as e:
             raise RuntimeError(f"Error updating user company: {e}")
+
 
 def user_from_data(data: dict) -> User:
     """Map a MongoDB document to a user entity."""

@@ -12,7 +12,9 @@ class StubCollection:
         update_matched_count=1,
     ):
         self.find_one_result = find_one_result
-        self.find_one_results = list(find_one_results) if find_one_results is not None else None
+        self.find_one_results = (
+            list(find_one_results) if find_one_results is not None else None
+        )
         self.find_result = list(find_result or [])
         self.error = error
         self.inserted_id = inserted_id
@@ -48,7 +50,9 @@ class StubCollection:
         self._record("update_one", query, update)
         matched = self.update_matched_count
         modified = 1 if matched else 0
-        return type("UpdateResult", (), {"matched_count": matched, "modified_count": modified})()
+        return type(
+            "UpdateResult", (), {"matched_count": matched, "modified_count": modified}
+        )()
 
     def replace_one(self, query, replacement, upsert=False):
         """Record a document replacement and return a simulated replace result."""

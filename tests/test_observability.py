@@ -36,7 +36,7 @@ SESSION_DOCUMENT = {
 @pytest.fixture(autouse=True)
 def no_color_override(monkeypatch):
     """Clear the color override for terminal-detection tests."""
-    monkeypatch.delenv('AEKO_LOG_COLOR', raising=False)
+    monkeypatch.delenv("AEKO_LOG_COLOR", raising=False)
 
 
 def entries(capsys):
@@ -56,7 +56,9 @@ def descriptions(capsys, module):
 
 def test_a_user_read_is_logged(capsys):
     """Verify that a user read is logged."""
-    repository = UserRepository(StubDatabase(user=StubCollection(find_one_result=USER_DOCUMENT)))
+    repository = UserRepository(
+        StubDatabase(user=StubCollection(find_one_result=USER_DOCUMENT))
+    )
 
     repository.get_user(12345)
 
@@ -92,7 +94,9 @@ def test_a_session_read_is_logged_under_its_own_name(capsys):
 
     SessionRepository(database).get_session("65a8b3d6c0f8e1d7f4b2c001")
 
-    assert descriptions(capsys, "database")[0].startswith("session.get_session succeeded in ")
+    assert descriptions(capsys, "database")[0].startswith(
+        "session.get_session succeeded in "
+    )
 
 
 def test_a_session_write_is_logged(capsys):
@@ -101,12 +105,16 @@ def test_a_session_write_is_logged(capsys):
 
     SessionRepository(database).update_name("65a8b3d6c0f8e1d7f4b2c001", "Escopo 2")
 
-    assert descriptions(capsys, "database")[0].startswith("session.update_name succeeded in ")
+    assert descriptions(capsys, "database")[0].startswith(
+        "session.update_name succeeded in "
+    )
 
 
 def test_an_improvement_plan_read_is_logged(capsys):
     """Verify that an improvement plan read is logged."""
-    collection = StubCollection(find_one_result={"_id": "1", "id_external_inventory": 7})
+    collection = StubCollection(
+        find_one_result={"_id": "1", "id_external_inventory": 7}
+    )
     database = StubDatabase(improvement_plan=collection)
 
     ImprovementPlanRepository(database).get_by_id_external_inventory(7)
@@ -236,7 +244,9 @@ def test_a_tool_call_over_the_session_is_logged(capsys, closing):
 
     session.call_tool("query_gases_info", query="metano")
 
-    assert "chroma.query_gases_info succeeded in " in " ".join(descriptions(capsys, "mcp"))
+    assert "chroma.query_gases_info succeeded in " in " ".join(
+        descriptions(capsys, "mcp")
+    )
 
 
 def test_a_tool_the_server_does_not_expose_is_logged_red(capsys, closing):
@@ -287,14 +297,18 @@ def test_an_expression_the_calculator_refuses_is_logged_red(capsys):
 
 def test_the_roi_tool_is_logged(capsys):
     """Verify that the roi tool is logged."""
-    finance._calculate_roi({"capex": 1000, "wacc_monthly": 0.01, "monthly_cash_flow": 100})
+    finance._calculate_roi(
+        {"capex": 1000, "wacc_monthly": 0.01, "monthly_cash_flow": 100}
+    )
 
     assert descriptions(capsys, "tool")[0].startswith("calculate_roi succeeded in ")
 
 
 def test_the_payback_tool_is_logged(capsys):
     """Verify that the payback tool is logged."""
-    finance._calculate_payback({"capex": 1000, "wacc_monthly": 0.01, "monthly_cash_flow": 100})
+    finance._calculate_payback(
+        {"capex": 1000, "wacc_monthly": 0.01, "monthly_cash_flow": 100}
+    )
 
     assert descriptions(capsys, "tool")[0].startswith("calculate_payback succeeded in ")
 
@@ -302,12 +316,16 @@ def test_the_payback_tool_is_logged(capsys):
 def test_a_refused_finance_request_is_logged_red(capsys):
     """Verify that a refused finance request is logged red."""
     with pytest.raises(ValueError):
-        finance._calculate_roi({"capex": 0, "wacc_monthly": 0.01, "monthly_cash_flow": 100})
+        finance._calculate_roi(
+            {"capex": 0, "wacc_monthly": 0.01, "monthly_cash_flow": 100}
+        )
 
     assert descriptions(capsys, "tool")[0].startswith("calculate_roi failed after ")
 
 
-def test_an_mcp_backed_tool_leaves_both_a_tool_and_an_mcp_line(capsys, monkeypatch, closing):
+def test_an_mcp_backed_tool_leaves_both_a_tool_and_an_mcp_line(
+    capsys, monkeypatch, closing
+):
     """Verify that an mcp backed tool leaves both a tool and an mcp line."""
     from cmd.api.integrations.mcp import chroma_mcp
 
@@ -323,20 +341,27 @@ def test_an_mcp_backed_tool_leaves_both_a_tool_and_an_mcp_line(capsys, monkeypat
 
     assert len(tool_lines) == 1
     assert tool_lines[0].startswith("query_gases_info succeeded in ")
-    assert any(line.startswith("chroma.query_gases_info succeeded in ") for line in mcp_lines)
+    assert any(
+        line.startswith("chroma.query_gases_info succeeded in ") for line in mcp_lines
+    )
 
 
 def test_a_climatiq_search_is_logged_as_an_integration(capsys, monkeypatch):
     """Verify that a climatiq search is logged as an integration."""
-    monkeypatch.setattr(climatiq_api, "_request", lambda *args, **kwargs: {"results": []})
+    monkeypatch.setattr(
+        climatiq_api, "_request", lambda *args, **kwargs: {"results": []}
+    )
 
     climatiq_api._climatiq_search("diesel")
 
-    assert descriptions(capsys, "integration")[0].startswith("climatiq_search succeeded in ")
+    assert descriptions(capsys, "integration")[0].startswith(
+        "climatiq_search succeeded in "
+    )
 
 
 def test_a_climatiq_failure_is_logged_red_with_the_vendors_message(capsys, monkeypatch):
     """Verify that a climatiq failure is logged red with the vendors message."""
+
     def fail(*args, **kwargs):
         """Raise a test failure from the supplied dependency."""
         raise climatiq_api.ClimatiqError("Climatiq returned 502")
@@ -356,7 +381,12 @@ def test_a_climatiq_estimate_is_logged(capsys, monkeypatch):
     monkeypatch.setattr(climatiq_api, "_request", lambda *args, **kwargs: {"co2e": 1})
 
     climatiq_api._climatiq_estimate(
-        {"activity_id": "electricity-supply_grid-source_residual_mix", "parameters": {"energy": 1, "energy_unit": "kWh"}}
+        {
+            "activity_id": "electricity-supply_grid-source_residual_mix",
+            "parameters": {"energy": 1, "energy_unit": "kWh"},
+        }
     )
 
-    assert descriptions(capsys, "integration")[0].startswith("climatiq_estimate succeeded in ")
+    assert descriptions(capsys, "integration")[0].startswith(
+        "climatiq_estimate succeeded in "
+    )

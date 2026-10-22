@@ -13,6 +13,7 @@ from user.user import IService as IUserService
 class MalformedPlanError(Exception):
     """Raised when analysis produces no persistable plan or structured inventory."""
 
+
 class IRepository(ABC):
     @abstractmethod
     def get_by_id_external_inventory(self, id_external_inventory) -> ImprovementPlan:
@@ -28,6 +29,7 @@ class IRepository(ABC):
     def replace(self, improvement_plan: ImprovementPlan) -> ImprovementPlan:
         """Replace the plan stored for the same external inventory identifier."""
         pass
+
 
 class IService(ABC):
     @abstractmethod

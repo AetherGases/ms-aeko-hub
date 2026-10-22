@@ -38,6 +38,7 @@ class PersistentMCPSession:
         startup_timeout: float = DEFAULT_STARTUP_TIMEOUT,
         close_timeout: float = DEFAULT_CLOSE_TIMEOUT,
     ) -> None:
+        """Configure the long-lived MCP child session."""
         self.name = server_name
         self._server_name = server_name
         self._build_client = build_client
@@ -62,7 +63,9 @@ class PersistentMCPSession:
 
         with self._lock:
             loop, keeper, closing = self._loop, self._keeper, self._closing
-            self._loop = self._thread = self._tools = self._closing = self._keeper = None
+            self._loop = self._thread = self._tools = self._closing = self._keeper = (
+                None
+            )
 
         if loop is None:
             return
@@ -100,6 +103,7 @@ class PersistentMCPSession:
             ) from last_error
 
     def _run(self, coroutine: Any) -> Any:
+        """Run a coroutine on the session event loop and return its result."""
         loop = self._loop
         if loop is None:
             raise ConnectionError("the MCP session was closed")
@@ -117,6 +121,7 @@ class PersistentMCPSession:
             ) from None
 
     def _resolve_tool(self, tool_name: str) -> BaseTool:
+        """Return a loaded tool by name, or raise if it is missing."""
         tools = self._ensure_started()
         if tool_name in tools:
             return tools[tool_name]
@@ -128,6 +133,7 @@ class PersistentMCPSession:
         )
 
     def _ensure_started(self) -> dict[str, BaseTool]:
+        """Start the child session thread if it is not already running."""
         with self._lock:
             if self._tools is not None:
                 return self._tools
@@ -144,7 +150,9 @@ class PersistentMCPSession:
                 thread.start()
 
                 ready: concurrent.futures.Future = concurrent.futures.Future()
-                keeper = asyncio.run_coroutine_threadsafe(self._keep_open(client, ready), loop)
+                keeper = asyncio.run_coroutine_threadsafe(
+                    self._keep_open(client, ready), loop
+                )
 
                 try:
                     tools = ready.result(timeout=self._startup_timeout)
@@ -156,11 +164,17 @@ class PersistentMCPSession:
                         f"MCP server: {exc}"
                     ) from exc
 
-                self._loop, self._thread, self._tools, self._keeper = loop, thread, tools, keeper
+                self._loop, self._thread, self._tools, self._keeper = (
+                    loop,
+                    thread,
+                    tools,
+                    keeper,
+                )
                 return tools
 
     @staticmethod
     def _run_loop(loop: asyncio.AbstractEventLoop) -> None:
+        """Run the MCP client session until close is requested."""
         asyncio.set_event_loop(loop)
         try:
             loop.run_forever()

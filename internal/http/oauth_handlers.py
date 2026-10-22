@@ -1,7 +1,6 @@
 """Expose OAuth 2.1 discovery, ChatGPT Sign in, token, and revoke endpoints."""
 
 from html import escape
-from pathlib import Path
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
@@ -21,15 +20,13 @@ from oauth.discovery import (
 from oauth.oauth import IService
 from oauth.rate_limit import authorize_rate_limit_exceeded
 from oauth.service import validate_authorize_parameters
+from internal.http.constants import (
+    MASCOT_PATH,
+    _MASCOT_PATH,
+    _SIGN_IN_TEMPLATE_PATH,
+)
 
 router = APIRouter()
-
-_WIDGETS_DIR = (
-    Path(__file__).resolve().parents[2] / "cmd" / "api" / "acl" / "open_ai" / "widgets"
-)
-_SIGN_IN_TEMPLATE_PATH = _WIDGETS_DIR / "oauth_sign_in.html"
-_MASCOT_PATH = _WIDGETS_DIR / "ic_aeko_mascot.png"
-MASCOT_PATH = "/ai/oauth/ic_aeko_mascot.png"
 
 
 def _sign_in_template() -> str:
@@ -46,6 +43,7 @@ def get_oauth_service(request: Request) -> IService:
 
 
 def _hidden(name: str, value: str) -> str:
+    """Render a hidden HTML input for the OAuth sign-in form."""
     return f'<input type="hidden" name="{escape(name)}" value="{escape(value)}">'
 
 
@@ -214,7 +212,9 @@ def token_post(
 ):
     """Exchange an authorization code for this API's Bearer access token."""
     if grant_type != "authorization_code":
-        raise HTTPException(status_code=400, detail="grant_type must be authorization_code.")
+        raise HTTPException(
+            status_code=400, detail="grant_type must be authorization_code."
+        )
     try:
         return get_oauth_service(request).exchange(
             code,

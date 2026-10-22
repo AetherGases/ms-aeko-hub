@@ -8,7 +8,11 @@ import pytest
 from session.entity import Message, Session, SessionWindow
 from session.service import Service, _metric_company
 from session.session import GuardrailRejectedError, IService
-from internal.shared.event_tracking import bind_id_request, set_aeko_metrics_sink, unbind_id_request
+from internal.shared.event_tracking import (
+    bind_id_request,
+    set_aeko_metrics_sink,
+    unbind_id_request,
+)
 from user.entity import User, UserMemory
 
 ID_SESSION = "s1"
@@ -48,8 +52,14 @@ class StubMetrics:
 
 
 class StubResponse:
-    def __init__(self, message, aeko_metrics=None, approved=True, agents_called=None,
-                 guardrail_retries=0):
+    def __init__(
+        self,
+        message,
+        aeko_metrics=None,
+        approved=True,
+        agents_called=None,
+        guardrail_retries=0,
+    ):
         self.message = message
         self.aeko_metrics = aeko_metrics or StubMetrics()
         self.id_session = ID_SESSION
@@ -137,7 +147,9 @@ class StubSessionFactory:
 
 class FakeSessionRepository:
     def __init__(self, sessions=None, messages=None, messages_count=0, error=None):
-        self.sessions = sessions or {ID_SESSION: Session(id=ID_SESSION, id_user=ID_USER, name="", messages=[])}
+        self.sessions = sessions or {
+            ID_SESSION: Session(id=ID_SESSION, id_user=ID_USER, name="", messages=[])
+        }
         self.messages = messages or {}
         self.messages_count = messages_count
         self.error = error
@@ -153,7 +165,9 @@ class FakeSessionRepository:
     def get_user_sessions(self, id_user):
         """Retrieve the sessions belonging to a user."""
         self._guard()
-        return [session for session in self.sessions.values() if session.id_user == id_user]
+        return [
+            session for session in self.sessions.values() if session.id_user == id_user
+        ]
 
     def get_session(self, id_session):
         """Retrieve a session by its internal identifier."""
@@ -179,7 +193,9 @@ class FakeSessionRepository:
         self._guard()
         self.created_for.append((id_user, user_repository))
         id_session = f"session-{len(self.sessions) + 1}"
-        self.sessions[id_session] = Session(id=id_session, id_user=id_user, name="", messages=[])
+        self.sessions[id_session] = Session(
+            id=id_session, id_user=id_user, name="", messages=[]
+        )
         return id_session
 
     def save_message(self, id_session, message):
@@ -246,7 +262,9 @@ class StubCacheRepository:
 def build_service(cache_repository=None, inactivity_minutes=20, **kwargs):
     """Build a domain service with configurable repository doubles."""
     repository = FakeSessionRepository(**kwargs)
-    return Service(repository, cache_repository, inactivity_minutes=inactivity_minutes), repository
+    return Service(
+        repository, cache_repository, inactivity_minutes=inactivity_minutes
+    ), repository
 
 
 @pytest.fixture
@@ -260,12 +278,21 @@ def recorded_metrics():
 
 def failing_messengers(error):
     """Build messengers that raise the configured exception."""
-    error.aeko_metrics = StubMetrics(error_description=f"{type(error).__name__}: {error}")
+    error.aeko_metrics = StubMetrics(
+        error_description=f"{type(error).__name__}: {error}"
+    )
     return StubMessengerFactory(error=error)
 
 
-def send(service, id_session=ID_SESSION, input="hi", id_user=ID_USER,
-         messengers=None, sessions=None, users=None):
+def send(
+    service,
+    id_session=ID_SESSION,
+    input="hi",
+    id_user=ID_USER,
+    messengers=None,
+    sessions=None,
+    users=None,
+):
     """Send or capture the request messages used by the test."""
     result = service.send_message(
         id_session,
@@ -419,7 +446,9 @@ def test_send_message_stamps_the_exchange_when_the_turn_carries_no_time():
 
 def test_send_message_keeps_the_submission_time_the_sdk_produced():
     """Verify that send message keeps the submission time the sdk produced."""
-    messengers = StubMessengerFactory(turn=StubTurn(input="hi", output="ho", submitted_at=SUBMITTED_AT))
+    messengers = StubMessengerFactory(
+        turn=StubTurn(input="hi", output="ho", submitted_at=SUBMITTED_AT)
+    )
     service, _ = build_service()
 
     assert send(service, messengers=messengers).submitted_at == SUBMITTED_AT
@@ -469,14 +498,18 @@ def test_send_message_rehydrates_the_conversation_into_the_session():
 
     send(service, sessions=sessions)
 
-    assert [turn.input for turn in sessions.last.messages] == ["Summarize this session."]
+    assert [turn.input for turn in sessions.last.messages] == [
+        "Summarize this session."
+    ]
 
 
 def test_send_message_prefers_cached_messages_over_mongo():
     """Verify that send message prefers cached messages over mongo."""
     mongo_turn = Message(input="mongo", output="stored", submitted_at=SUBMITTED_AT)
     cached_turn = Message(input="redis", output="window", submitted_at=SUBMITTED_AT)
-    cache = StubCacheRepository(windows={ID_SESSION: SessionWindow(ID_USER, [cached_turn])})
+    cache = StubCacheRepository(
+        windows={ID_SESSION: SessionWindow(ID_USER, [cached_turn])}
+    )
     sessions = StubSessionFactory()
     service, repository = build_service(
         cache_repository=cache,
@@ -523,7 +556,9 @@ def test_send_message_falls_back_to_mongo_when_the_cache_has_no_window():
 def test_send_message_refreshes_the_cached_window_after_the_turn():
     """Verify that send message refreshes the cached window after the turn."""
     cached_turn = Message(input="redis", output="window", submitted_at=SUBMITTED_AT)
-    cache = StubCacheRepository(windows={ID_SESSION: SessionWindow(ID_USER, [cached_turn])})
+    cache = StubCacheRepository(
+        windows={ID_SESSION: SessionWindow(ID_USER, [cached_turn])}
+    )
     service, _ = build_service(cache_repository=cache, inactivity_minutes=20)
 
     message = send(service)
@@ -547,21 +582,36 @@ def test_send_message_does_not_refresh_the_cache_when_the_turn_is_rejected():
 
 def test_send_message_hands_over_only_the_memories_that_are_still_valid():
     """Verify that send message hands over only the memories that are still valid."""
-    valid = UserMemory(id="m1", id_user=ID_USER, field="preferred_language", description="pt-BR")
+    valid = UserMemory(
+        id="m1", id_user=ID_USER, field="preferred_language", description="pt-BR"
+    )
     expiring = UserMemory(
-        id="m2", id_user=ID_USER, field="soon", description="still valid",
+        id="m2",
+        id_user=ID_USER,
+        field="soon",
+        description="still valid",
         expires_at=datetime.utcnow() + timedelta(days=1),
     )
     expired = UserMemory(
-        id="m3", id_user=ID_USER, field="stale", description="gone",
+        id="m3",
+        id_user=ID_USER,
+        field="stale",
+        description="gone",
         expires_at=datetime.utcnow() - timedelta(seconds=1),
     )
     messengers = StubMessengerFactory()
     service, _ = build_service()
 
-    send(service, messengers=messengers, users=StubUserRepository(memories=[valid, expiring, expired]))
+    send(
+        service,
+        messengers=messengers,
+        users=StubUserRepository(memories=[valid, expiring, expired]),
+    )
 
-    assert [memory.field for memory in messengers.last.memories] == ["preferred_language", "soon"]
+    assert [memory.field for memory in messengers.last.memories] == [
+        "preferred_language",
+        "soon",
+    ]
 
 
 def test_send_message_rejects_an_unknown_user():
@@ -662,9 +712,15 @@ def test_send_message_rejects_a_session_owned_by_another_user():
     service, _ = build_service()
 
     with pytest.raises(ValueError, match="not allowed"):
-        send(service, id_user="someone-else", users=StubUserRepository(
-            user=User(id="someone-else", id_external_user=999, role="r", usecase="u")
-        ))
+        send(
+            service,
+            id_user="someone-else",
+            users=StubUserRepository(
+                user=User(
+                    id="someone-else", id_external_user=999, role="r", usecase="u"
+                )
+            ),
+        )
 
 
 def test_send_message_propagates_a_value_error_from_the_repository():
@@ -741,7 +797,9 @@ def test_an_answered_turn_records_what_the_run_cost(recorded_metrics):
     finally:
         unbind_id_request(token)
 
-    assert [metrics.id_request for metrics in recorded_metrics] == ["65a8b3d6c0f8e1d7f4b2c0aa"]
+    assert [metrics.id_request for metrics in recorded_metrics] == [
+        "65a8b3d6c0f8e1d7f4b2c0aa"
+    ]
     assert recorded_metrics[0].error_description is None
 
 
@@ -769,7 +827,9 @@ def test_an_answered_turn_records_the_user_company():
     assert seen == [(12345, 90)]
 
 
-def test_a_turn_no_reviewer_approved_is_recorded_as_the_failure_it_was(recorded_metrics):
+def test_a_turn_no_reviewer_approved_is_recorded_as_the_failure_it_was(
+    recorded_metrics,
+):
     """Verify that a turn no reviewer approved is recorded as the failure it was."""
     service, repository = build_service()
 
@@ -788,7 +848,9 @@ def test_a_run_that_raised_records_the_tracking_it_carried_out(recorded_metrics)
     with pytest.raises(RuntimeError, match="gemini down"):
         send(service, messengers=failing_messengers(OSError("gemini down")))
 
-    assert [metrics.error_description for metrics in recorded_metrics] == ["OSError: gemini down"]
+    assert [metrics.error_description for metrics in recorded_metrics] == [
+        "OSError: gemini down"
+    ]
 
 
 def test_a_failure_carrying_no_tracking_records_nothing(recorded_metrics):
@@ -803,6 +865,7 @@ def test_a_failure_carrying_no_tracking_records_nothing(recorded_metrics):
 
 def test_a_recording_that_fails_never_takes_the_exchange_down():
     """Verify that a recording that fails never takes the exchange down."""
+
     def explode(metrics):
         """Raise the configured failure to exercise error handling."""
         raise RuntimeError("mongo is down")

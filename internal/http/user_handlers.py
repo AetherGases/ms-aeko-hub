@@ -5,20 +5,36 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from internal.http.ms_auth_authorization import ensure_external_user
 from internal.http.ms_auth_dependencies import MsAuth, require_ms_auth_principal
+from internal.http.constants import UNEXPECTED_SERVER_ERROR
 from internal.shared import Module, log_failure
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
 from user.user import IService
 
-UNEXPECTED_SERVER_ERROR = "Unexpected server error."
-
 router = APIRouter(tags=["Users"], dependencies=[Depends(require_ms_auth_principal)])
 
+
 class UserResponseData(BaseModel):
-    id_external_user: int = Field(..., description="External identifier of the user.", json_schema_extra={"example": 12345})
-    role: str = Field(..., description="Role assigned to the user.", json_schema_extra={"example": "analyst"})
-    usecase: str = Field(..., description="User use case or profile category.", json_schema_extra={"example": "report_generation"})
-    id_external_company: int | None = Field(None, description="External identifier of the user's company.", json_schema_extra={"example": None})
+    id_external_user: int = Field(
+        ...,
+        description="External identifier of the user.",
+        json_schema_extra={"example": 12345},
+    )
+    role: str = Field(
+        ...,
+        description="Role assigned to the user.",
+        json_schema_extra={"example": "analyst"},
+    )
+    usecase: str = Field(
+        ...,
+        description="User use case or profile category.",
+        json_schema_extra={"example": "report_generation"},
+    )
+    id_external_company: int | None = Field(
+        None,
+        description="External identifier of the user's company.",
+        json_schema_extra={"example": None},
+    )
 
     model_config = ConfigDict(frozen=True)
 
@@ -57,7 +73,9 @@ def get_user_service(request: Request) -> IService:
 )
 def get_user(
     principal: MsAuth,
-    id_external_user: int = Path(..., description="External user identifier.", examples=[12345]),
+    id_external_user: int = Path(
+        ..., description="External user identifier.", examples=[12345]
+    ),
     service: IService = Depends(get_user_service),
 ) -> UserResponseData:
     """Retrieve a user by external identifier."""
@@ -73,5 +91,7 @@ def get_user(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        log_failure(Module.REQUEST, f"Error retrieving user: {type(exc).__name__}: {exc}")
+        log_failure(
+            Module.REQUEST, f"Error retrieving user: {type(exc).__name__}: {exc}"
+        )
         raise HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR) from exc

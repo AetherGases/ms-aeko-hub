@@ -28,6 +28,7 @@ def b64url(data: bytes) -> str:
 
 
 def _b64url_decode(value: str) -> bytes:
+    """Decode URL-safe Base64 without requiring padding."""
     padding = "=" * (-len(value) % 4)
     return base64.urlsafe_b64decode(value + padding)
 
@@ -49,7 +50,9 @@ def encode_access_token(
         else OAUTH_ACCESS_TOKEN_TTL_SECONDS
     )
     now = int(time.time())
-    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    header = b64url(
+        json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode()
+    )
     payload = b64url(
         json.dumps(
             {
@@ -65,11 +68,14 @@ def encode_access_token(
         ).encode()
     )
     signing_input = f"{header}.{payload}".encode()
-    signature = hmac.new(OAUTH_SIGNING_KEY.encode(), signing_input, hashlib.sha256).digest()
+    signature = hmac.new(
+        OAUTH_SIGNING_KEY.encode(), signing_input, hashlib.sha256
+    ).digest()
     return f"{header}.{payload}.{b64url(signature)}"
 
 
 def _positive_claim(value, field_name: str) -> int:
+    """Read a positive integer claim from a JWT payload."""
     if isinstance(value, bool) or value is None:
         raise ValueError("Invalid access token.")
     if isinstance(value, int):

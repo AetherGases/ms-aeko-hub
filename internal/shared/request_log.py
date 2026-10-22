@@ -72,7 +72,7 @@ _records: contextvars.ContextVar[list[Record] | None] = contextvars.ContextVar(
 def streaming() -> bool:
     """Return whether the environment enables immediate operation log output."""
 
-    return os.environ.get('AEKO_LOG_STREAM', "").strip().lower() in TRUE_VALUES
+    return os.environ.get("AEKO_LOG_STREAM", "").strip().lower() in TRUE_VALUES
 
 
 def collect(record: Record) -> bool:
@@ -154,7 +154,9 @@ def emit(
     """Write a colored request header and its operations as a single log block."""
 
     failed = error != "" or status is None or status >= FAILING_STATUS
-    line = format_entry(Module.REQUEST, header(method, path, status, elapsed, records, error))
+    line = format_entry(
+        Module.REQUEST, header(method, path, status, elapsed, records, error)
+    )
     block = [paint(line, RED if failed else BLUE), *render(records or [])]
     write("\n".join(block))
 
@@ -169,6 +171,7 @@ class RequestLogMiddleware:
     """Collect operation logs and metrics in the same ASGI task as the request."""
 
     def __init__(self, app: Callable) -> None:
+        """Wrap the inner ASGI application with request logging."""
         self.app = app
 
     def _close(
@@ -197,6 +200,7 @@ class RequestLogMiddleware:
         emit(method, path, status, elapsed, records, error)
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        """Log HTTP requests and persist hub metrics for each response."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -237,7 +241,9 @@ class RequestLogMiddleware:
             )
             raise
         else:
-            self._close(scope, method, path, status["code"], started, records, id_request)
+            self._close(
+                scope, method, path, status["code"], started, records, id_request
+            )
         finally:
             unbind_id_request(id_token)
             _records.reset(token)

@@ -8,16 +8,23 @@ from internal.shared import Module, logged
 
 class Repository(IRepository):
     def __init__(self, db):
+        """Bind the MongoDB database handle."""
         self.db = db
 
     @logged(Module.DATABASE, "improvement_plan.get_by_id_external_inventory")
     def get_by_id_external_inventory(self, id_external_inventory) -> ImprovementPlan:
         """Retrieve the improvement plan associated with an external inventory identifier."""
         try:
-            query, projection = q.get_by_id_external_inventory_query(id_external_inventory)
-            improvement_plan_data = self.db["improvement_plan"].find_one(query, projection)
+            query, projection = q.get_by_id_external_inventory_query(
+                id_external_inventory
+            )
+            improvement_plan_data = self.db["improvement_plan"].find_one(
+                query, projection
+            )
             if not improvement_plan_data:
-                raise ValueError(f"Improvement plan with id_external_inventory {id_external_inventory} not found.")
+                raise ValueError(
+                    f"Improvement plan with id_external_inventory {id_external_inventory} not found."
+                )
             return improvement_plan_from_data(improvement_plan_data)
         except ValueError as e:
             raise e
@@ -49,7 +56,9 @@ class Repository(IRepository):
     def list_latest(self, n: int, id_external_company: int) -> list[ImprovementPlan]:
         """Retrieve the n most recently updated improvement plans for a company."""
         try:
-            query, projection = q.get_latest_improvement_plans_query(id_external_company)
+            query, projection = q.get_latest_improvement_plans_query(
+                id_external_company
+            )
             documents = self.db["improvement_plan"].find(
                 query,
                 projection,

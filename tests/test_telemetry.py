@@ -140,7 +140,9 @@ def test_normalize_metrics_endpoint_returns_custom_urls_unchanged():
 def test_configure_prefers_delta_metric_temporality_for_dynatrace(monkeypatch):
     """Verify that OTLP export defaults to DELTA temporality required by Dynatrace."""
     telemetry.shutdown()
-    monkeypatch.delenv("OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", raising=False)
+    monkeypatch.delenv(
+        "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE", raising=False
+    )
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     try:
         telemetry.configure()
@@ -160,14 +162,20 @@ def test_dt_platform_token_builds_otlp_headers(monkeypatch):
 def test_record_hub_metric_is_a_no_op_before_configure():
     """Verify that recording is skipped until OpenTelemetry is configured."""
     telemetry.record_hub_metric(
-        HubMetric(latency="1ms", response_status=200, endpoint="/ai/user/{id_external_user}")
+        HubMetric(
+            latency="1ms", response_status=200, endpoint="/ai/user/{id_external_user}"
+        )
     )
 
 
 def test_record_hub_metric_forwards_attributes_to_otel():
     """Verify that hub metric fields map to OTLP counter and histogram attributes."""
-    counter = SimpleNamespace(calls=[], add=lambda value, attrs: counter.calls.append((value, attrs)))
-    histogram = SimpleNamespace(calls=[], record=lambda value, attrs: histogram.calls.append((value, attrs)))
+    counter = SimpleNamespace(
+        calls=[], add=lambda value, attrs: counter.calls.append((value, attrs))
+    )
+    histogram = SimpleNamespace(
+        calls=[], record=lambda value, attrs: histogram.calls.append((value, attrs))
+    )
     telemetry._hub_requests = counter
     telemetry._hub_latency = histogram
     try:
@@ -199,9 +207,15 @@ def test_record_hub_metric_forwards_attributes_to_otel():
 
 def test_record_aeko_run_forwards_attributes_to_otel():
     """Verify that SDK run fields map to OTLP counters and histograms."""
-    counter = SimpleNamespace(calls=[], add=lambda value, attrs: counter.calls.append((value, attrs)))
-    latency = SimpleNamespace(calls=[], record=lambda value, attrs: latency.calls.append((value, attrs)))
-    cost = SimpleNamespace(calls=[], record=lambda value, attrs: cost.calls.append((value, attrs)))
+    counter = SimpleNamespace(
+        calls=[], add=lambda value, attrs: counter.calls.append((value, attrs))
+    )
+    latency = SimpleNamespace(
+        calls=[], record=lambda value, attrs: latency.calls.append((value, attrs))
+    )
+    cost = SimpleNamespace(
+        calls=[], record=lambda value, attrs: cost.calls.append((value, attrs))
+    )
     telemetry._aeko_runs = counter
     telemetry._aeko_latency = latency
     telemetry._aeko_cost = cost
@@ -241,11 +255,21 @@ def test_record_aeko_run_forwards_attributes_to_otel():
 
 def test_record_aeko_run_exports_agent_and_tool_invocations():
     """Verify used_agents / used_tools map to OTLP invocation counters."""
-    runs = SimpleNamespace(calls=[], add=lambda value, attrs: runs.calls.append((value, attrs)))
-    latency = SimpleNamespace(calls=[], record=lambda value, attrs: latency.calls.append((value, attrs)))
-    cost = SimpleNamespace(calls=[], record=lambda value, attrs: cost.calls.append((value, attrs)))
-    agents = SimpleNamespace(calls=[], add=lambda value, attrs: agents.calls.append((value, attrs)))
-    tools = SimpleNamespace(calls=[], add=lambda value, attrs: tools.calls.append((value, attrs)))
+    runs = SimpleNamespace(
+        calls=[], add=lambda value, attrs: runs.calls.append((value, attrs))
+    )
+    latency = SimpleNamespace(
+        calls=[], record=lambda value, attrs: latency.calls.append((value, attrs))
+    )
+    cost = SimpleNamespace(
+        calls=[], record=lambda value, attrs: cost.calls.append((value, attrs))
+    )
+    agents = SimpleNamespace(
+        calls=[], add=lambda value, attrs: agents.calls.append((value, attrs))
+    )
+    tools = SimpleNamespace(
+        calls=[], add=lambda value, attrs: tools.calls.append((value, attrs))
+    )
     telemetry._aeko_runs = runs
     telemetry._aeko_latency = latency
     telemetry._aeko_cost = cost
@@ -297,9 +321,15 @@ def test_record_aeko_run_is_a_no_op_before_configure():
 
 def test_record_aeko_run_skips_agent_counters_when_not_configured():
     """Verify that run metrics still export when agent/tool counters are absent."""
-    runs = SimpleNamespace(calls=[], add=lambda value, attrs: runs.calls.append((value, attrs)))
-    latency = SimpleNamespace(calls=[], record=lambda value, attrs: latency.calls.append((value, attrs)))
-    cost = SimpleNamespace(calls=[], record=lambda value, attrs: cost.calls.append((value, attrs)))
+    runs = SimpleNamespace(
+        calls=[], add=lambda value, attrs: runs.calls.append((value, attrs))
+    )
+    latency = SimpleNamespace(
+        calls=[], record=lambda value, attrs: latency.calls.append((value, attrs))
+    )
+    cost = SimpleNamespace(
+        calls=[], record=lambda value, attrs: cost.calls.append((value, attrs))
+    )
     telemetry._aeko_runs = runs
     telemetry._aeko_latency = latency
     telemetry._aeko_cost = cost

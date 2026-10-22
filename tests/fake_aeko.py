@@ -18,7 +18,6 @@ AGENT_NAMES: tuple[str, ...] = (
     "FAQ",
     "Orquestrador",
     "Guardrail de Saída",
-
     "Verificador de Resposta",
     "Análista de inventários",
     "Analista de Poluentes",
@@ -251,10 +250,17 @@ class Aeko:
     """Configuration facade. Nothing here reads the environment."""
 
     @staticmethod
-    def config(api_key: str, *, fast_model: str | None = None, slow_model: str | None = None,
-               max_tokens: int | None = None, report_max_tokens: int | None = None,
-               temperature: float | None = None, top_p: float | None = None,
-               top_k: int | None = None) -> None:
+    def config(
+        api_key: str,
+        *,
+        fast_model: str | None = None,
+        slow_model: str | None = None,
+        max_tokens: int | None = None,
+        report_max_tokens: int | None = None,
+        temperature: float | None = None,
+        top_p: float | None = None,
+        top_k: int | None = None,
+    ) -> None:
         """Configure the simulated SDK runtime from the supplied settings."""
         if not api_key or not isinstance(api_key, str):
             raise AekoNotConfiguredError("Aeko.config() requires a non-empty API key.")
@@ -342,9 +348,13 @@ class AekoMessenger:
     next_summary_error: Exception | None = None
     next_summary_agents: tuple[str, ...] = ("FAQ",)
 
-    def __init__(self, user: AekoUser, memories: Sequence[AekoUserMemory] | None = None):
+    def __init__(
+        self, user: AekoUser, memories: Sequence[AekoUserMemory] | None = None
+    ):
         if not isinstance(user, AekoUser):
-            raise TypeError(f"AekoMessenger takes an AekoUser, got {type(user).__name__}.")
+            raise TypeError(
+                f"AekoMessenger takes an AekoUser, got {type(user).__name__}."
+            )
 
         memories = list(memories or [])
         for memory in memories:
@@ -384,8 +394,9 @@ class AekoMessenger:
         RUNTIME.set_tools_calls.append(dict(tools))
         RUNTIME.tools = normalized
 
-    def send_message(self, message: str, session: AekoSession, *,
-                     id_request: str) -> AekoMessageResponse:
+    def send_message(
+        self, message: str, session: AekoSession, *, id_request: str
+    ) -> AekoMessageResponse:
         """Record the conversation call and return or raise its scripted result."""
         RUNTIME.require_api_key()
 
@@ -447,13 +458,13 @@ class AekoMessenger:
             id_session=session.id,
             id_user=session.id_user,
             agents_called=list(type(self).next_agents),
-
             approved=True,
             guardrail_retries=type(self).next_guardrail_retries,
         )
 
-    def generate_summary(self, messages: Sequence[AekoMessage], *,
-                         id_request: str) -> AekoSummaryResponse:
+    def generate_summary(
+        self, messages: Sequence[AekoMessage], *, id_request: str
+    ) -> AekoSummaryResponse:
         """Record the summary call and return or raise its scripted result."""
         RUNTIME.require_api_key()
 
@@ -558,11 +569,21 @@ class AekoInventoryAnalyzer:
     def set_context(self, context: str) -> None:
         """Record the analysis context supplied by the service."""
         if not isinstance(context, str):
-            raise TypeError(f"set_context() takes a string, got {type(context).__name__}.")
+            raise TypeError(
+                f"set_context() takes a string, got {type(context).__name__}."
+            )
         self.context = context or ""
 
-    def analyze(self, inventory: str, *, id_external_inventory: int,
-                id_request: str, gases, scopes, categories) -> AekoAnalysisResponse:
+    def analyze(
+        self,
+        inventory: str,
+        *,
+        id_external_inventory: int,
+        id_request: str,
+        gases,
+        scopes,
+        categories,
+    ) -> AekoAnalysisResponse:
         """Record the inventory analysis call and return or raise its scripted result."""
         RUNTIME.require_api_key()
 
@@ -584,7 +605,9 @@ class AekoInventoryAnalyzer:
         scopes = _catalog_items("scopes", scopes, AekoCatalogItem)
         categories = _catalog_items("categories", categories, AekoCategoryCatalogItem)
 
-        self.analyzed.append((inventory, id_external_inventory, id_request, gases, scopes, categories))
+        self.analyzed.append(
+            (inventory, id_external_inventory, id_request, gases, scopes, categories)
+        )
 
         if type(self).next_error is not None:
             error = type(self).next_error
@@ -612,7 +635,9 @@ class AekoInventoryAnalyzer:
         }
 
         return AekoAnalysisResponse(
-            plan=AekoImprovementPlan(id_external_inventory=id_external_inventory, **fields),
+            plan=AekoImprovementPlan(
+                id_external_inventory=id_external_inventory, **fields
+            ),
             inventory=AekoExtractedInventory.model_validate(inventory_fields),
             aeko_metrics=_tracking(
                 id_request,

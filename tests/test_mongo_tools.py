@@ -168,7 +168,9 @@ class StubPlanService:
         if self.error is not None:
             raise self.error
         if self.plan is None:
-            raise ValueError(f"Improvement plan with id_external_inventory {identifier} not found.")
+            raise ValueError(
+                f"Improvement plan with id_external_inventory {identifier} not found."
+            )
         return self.plan
 
     def list_latest(self, n, id_external_company):
@@ -212,12 +214,15 @@ class StubUserService:
         if role is None and usecase is None:
             raise ValueError("At least one of role or usecase must be supplied.")
         if self.user is None:
-            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            raise ValueError(
+                f"User with id_external_user {id_external_user} not found."
+            )
         if role is not None:
             self.user.role = role
         if usecase is not None:
             self.user.usecase = usecase
         return self.user
+
 
 class StubSessionService:
     """Stands in for the session service the tools read from."""
@@ -252,7 +257,10 @@ def reset_mongo_tools():
 @pytest.fixture
 def bound_user():
     """Bind the conversation user identity for wrapped Mongo tools."""
-    from cmd.api.acl.open_ai.identity import bind_id_external_user, reset_id_external_user
+    from cmd.api.acl.open_ai.identity import (
+        bind_id_external_user,
+        reset_id_external_user,
+    )
 
     token = bind_id_external_user(12345)
     try:
@@ -402,7 +410,9 @@ def test_list_latest_improvement_plans_asks_the_service_for_n_and_the_user_compa
     result = mongo_tools._list_latest_improvement_plans(12345, 2)
 
     assert [item["id_external_inventory"] for item in result] == [43]
-    assert all("_id" not in item and "id_external_company" not in item for item in result)
+    assert all(
+        "_id" not in item and "id_external_company" not in item for item in result
+    )
     assert plans.calls == [("list_latest", 2, 90)]
 
 
@@ -430,7 +440,11 @@ def test_list_latest_improvement_plans_accepts_a_numeric_string():
 def test_list_latest_improvement_plans_does_not_cap_at_twenty():
     """Verify that list latest improvement plans does not cap at twenty."""
     plans = [
-        ImprovementPlan(id=f"plan-{index}", id_external_inventory=index, updated_at=f"2026-01-{index + 1:02d}T00:00:00Z")
+        ImprovementPlan(
+            id=f"plan-{index}",
+            id_external_inventory=index,
+            updated_at=f"2026-01-{index + 1:02d}T00:00:00Z",
+        )
         for index in range(25)
     ]
     bind(plans=StubPlanService(plans=plans), users=StubUserService(user=COMPANY_USER))
@@ -488,7 +502,12 @@ def test_get_user_profile_by_external_id_reads_ms_auth_and_merges_role():
 
 def test_list_user_memories_resolves_the_user_then_lists_memories():
     """Verify that list user memories resolves the user then lists memories."""
-    second = UserMemory(id="m2", id_user=USER_ID, field="improvement_plan", description="replace the boiler")
+    second = UserMemory(
+        id="m2",
+        id_user=USER_ID,
+        field="improvement_plan",
+        description="replace the boiler",
+    )
     users = StubUserService(user=USER, memories=[MEMORY, second])
     bind(users=users)
 
@@ -516,7 +535,9 @@ def test_list_user_memory_fields_returns_only_field_names():
     """Verify that list user memory fields returns only field names."""
     bind(users=StubUserService(user=USER, memories=[MEMORY]))
 
-    assert mongo_tools._list_user_memory_fields(12345) == [{"field": "preferred_language"}]
+    assert mongo_tools._list_user_memory_fields(12345) == [
+        {"field": "preferred_language"}
+    ]
 
 
 def test_get_user_memory_by_field_returns_the_named_memory():
@@ -552,7 +573,10 @@ def test_get_user_memory_by_field_raises_when_the_field_is_missing():
 
 def test_list_user_session_names_returns_names_without_messages():
     """Verify that list user session names returns names without messages."""
-    bind(users=StubUserService(user=USER), sessions=StubSessionService(sessions=[SESSION]))
+    bind(
+        users=StubUserService(user=USER),
+        sessions=StubSessionService(sessions=[SESSION]),
+    )
 
     result = mongo_tools._list_user_session_names(12345)
 
@@ -606,7 +630,9 @@ def test_get_latest_session_messages_returns_the_newest_n_messages():
         sessions=StubSessionService(sessions=[SESSION], messages=messages),
     )
 
-    result = mongo_tools._get_latest_session_messages(12345, "Weekly emissions review", 2)
+    result = mongo_tools._get_latest_session_messages(
+        12345, "Weekly emissions review", 2
+    )
 
     assert result == [
         {"input": "newest", "output": "c", "submitted_at": "2026-07-26T14:30:00Z"},
@@ -620,11 +646,15 @@ def test_get_latest_session_messages_returns_fewer_when_the_session_is_shorter()
         users=StubUserService(user=USER),
         sessions=StubSessionService(
             sessions=[SESSION],
-            messages=[Message(input="only", output="one", submitted_at="2026-07-26T14:30:00Z")],
+            messages=[
+                Message(input="only", output="one", submitted_at="2026-07-26T14:30:00Z")
+            ],
         ),
     )
 
-    result = mongo_tools._get_latest_session_messages(12345, "Weekly emissions review", 5)
+    result = mongo_tools._get_latest_session_messages(
+        12345, "Weekly emissions review", 5
+    )
 
     assert len(result) == 1
     assert result[0]["input"] == "only"
@@ -682,7 +712,9 @@ def test_get_improvement_plan_tools_exposes_the_typed_plan_catalog():
 
     assert {tool.name for tool in tools} == IMPROVEMENT_PLAN_TOOL_NAMES
     assert all(isinstance(tool, Tool) and tool.description for tool in tools)
-    assert all("filter" not in tool.args and "filter_json" not in tool.args for tool in tools)
+    assert all(
+        "filter" not in tool.args and "filter_json" not in tool.args for tool in tools
+    )
 
 
 def test_improvement_plan_tools_load_descriptions_from_the_environment():
@@ -720,7 +752,9 @@ def test_get_user_memory_tools_exposes_the_typed_user_catalog():
     tools = mongo_tools.get_user_memory_tools()
 
     assert {tool.name for tool in tools} == USER_MEMORY_TOOL_NAMES
-    assert all("filter" not in tool.args and "filter_json" not in tool.args for tool in tools)
+    assert all(
+        "filter" not in tool.args and "filter_json" not in tool.args for tool in tools
+    )
 
 
 def test_user_memory_tools_load_descriptions_from_the_environment():
@@ -748,7 +782,9 @@ def test_get_session_tools_exposes_the_typed_session_catalog():
     tools = mongo_tools.get_session_tools()
 
     assert {tool.name for tool in tools} == SESSION_TOOL_NAMES
-    assert all("filter" not in tool.args and "filter_json" not in tool.args for tool in tools)
+    assert all(
+        "filter" not in tool.args and "filter_json" not in tool.args for tool in tools
+    )
 
 
 def test_session_tools_load_descriptions_from_the_environment():
@@ -852,7 +888,9 @@ def test_get_user_profile_write_tools_exposes_the_profile_writer():
 
     assert {tool.name for tool in tools} == PROFILE_WRITE_TOOL_NAMES
     assert all(isinstance(tool, Tool) and tool.description for tool in tools)
-    assert all("filter" not in tool.args and "filter_json" not in tool.args for tool in tools)
+    assert all(
+        "filter" not in tool.args and "filter_json" not in tool.args for tool in tools
+    )
 
 
 def test_profile_write_tools_load_descriptions_from_the_environment():
@@ -885,7 +923,9 @@ def test_list_user_memories_tool_uses_bound_identity_not_another_user(bound_user
     users = StubUserService(user=USER, memories=[MEMORY])
     bind(users=users)
 
-    result = _named_tool(mongo_tools.get_user_memory_tools(), "list_user_memories").func()
+    result = _named_tool(
+        mongo_tools.get_user_memory_tools(), "list_user_memories"
+    ).func()
 
     assert result == [{"field": "preferred_language", "description": "pt-BR"}]
     assert users.calls == [("get_mongo_user", 12345), ("get_user_memories", USER_ID)]
@@ -897,7 +937,9 @@ def test_list_user_session_names_tool_uses_bound_identity_not_another_user(bound
     sessions = StubSessionService(sessions=[SESSION])
     bind(users=users, sessions=sessions)
 
-    result = _named_tool(mongo_tools.get_session_tools(), "list_user_session_names").func()
+    result = _named_tool(
+        mongo_tools.get_session_tools(), "list_user_session_names"
+    ).func()
 
     assert result == [{"name": "Weekly emissions review"}]
     assert users.calls == [("get_mongo_user", 12345)]
@@ -983,7 +1025,11 @@ def test_list_user_memories_skips_expired_memories():
 
 def test_list_user_memory_fields_skips_expired_memories():
     """Verify that list user memory fields skips expired memories."""
-    bind(users=StubUserService(user=USER, memories=[EXPIRED_MEMORY, MEMORY, FUTURE_MEMORY]))
+    bind(
+        users=StubUserService(
+            user=USER, memories=[EXPIRED_MEMORY, MEMORY, FUTURE_MEMORY]
+        )
+    )
 
     assert mongo_tools._list_user_memory_fields(12345) == [
         {"field": "preferred_language"},

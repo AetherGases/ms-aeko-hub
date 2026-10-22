@@ -27,6 +27,7 @@ def agents_from_sdk(metrics) -> list[AgentMetric]:
 
 
 def _valid_company_id(id_external_company: int | None) -> bool:
+    """Return whether the company identifier is a positive integer."""
     return (
         not isinstance(id_external_company, bool)
         and isinstance(id_external_company, int)

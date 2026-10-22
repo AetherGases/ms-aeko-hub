@@ -38,8 +38,8 @@ BAD = Record(
 @pytest.fixture(autouse=True)
 def plain_output(monkeypatch):
     """Configure uncolored output for log assertions."""
-    monkeypatch.delenv('AEKO_LOG_COLOR', raising=False)
-    monkeypatch.delenv('AEKO_LOG_STREAM', raising=False)
+    monkeypatch.delenv("AEKO_LOG_COLOR", raising=False)
+    monkeypatch.delenv("AEKO_LOG_STREAM", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -180,7 +180,9 @@ def test_a_failed_entry_names_its_error():
     """Verify that a failed entry names its error."""
     (line,) = render([BAD])
 
-    assert line.endswith("failed after 0.3ms: ValueError: '2 +' could not be calculated")
+    assert line.endswith(
+        "failed after 0.3ms: ValueError: '2 +' could not be calculated"
+    )
 
 
 def test_both_outcomes_keep_the_duration_in_the_same_column():
@@ -192,7 +194,7 @@ def test_both_outcomes_keep_the_duration_in_the_same_column():
 
 def test_each_entry_is_coloured_by_its_own_outcome(monkeypatch):
     """Verify that each entry is coloured by its own outcome."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', "1")
+    monkeypatch.setenv("AEKO_LOG_COLOR", "1")
     good, bad = render([OK, BAD])
 
     assert good.startswith(BLUE)
@@ -260,7 +262,7 @@ def test_the_whole_block_reaches_the_stream_in_one_write(monkeypatch):
 
 def test_a_successful_request_has_a_blue_header(monkeypatch, capsys):
     """Verify that a successful request has a blue header."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', "1")
+    monkeypatch.setenv("AEKO_LOG_COLOR", "1")
     emit("GET", "/x", 200, "5.0ms", [OK])
 
     assert capsys.readouterr().out.startswith(BLUE)
@@ -269,15 +271,17 @@ def test_a_successful_request_has_a_blue_header(monkeypatch, capsys):
 @pytest.mark.parametrize("status", [400, 404, 422, 500, 502])
 def test_a_request_that_did_not_succeed_has_a_red_header(monkeypatch, capsys, status):
     """Verify that a request that did not succeed has a red header."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', "1")
+    monkeypatch.setenv("AEKO_LOG_COLOR", "1")
     emit("GET", "/x", status, "5.0ms", [])
 
     assert capsys.readouterr().out.startswith(RED)
 
 
-def test_a_failed_entry_under_a_successful_request_keeps_both_colours(monkeypatch, capsys):
+def test_a_failed_entry_under_a_successful_request_keeps_both_colours(
+    monkeypatch, capsys
+):
     """Verify that a failed entry under a successful request keeps both colours."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', "1")
+    monkeypatch.setenv("AEKO_LOG_COLOR", "1")
     emit("GET", "/x", 200, "5.0ms", [BAD, OK])
 
     header_line, failed, succeeded = capsys.readouterr().out.splitlines()
@@ -308,6 +312,7 @@ def build_app(operations=(), status=200, raises=None):
 
 async def call(app, method="GET", path="/x"):
     """Invoke the ASGI application with a simulated request scope."""
+
     async def receive():
         """Supply a simulated ASGI request message."""
         return {"type": "http.request", "body": b"", "more_body": False}
@@ -350,7 +355,12 @@ def test_the_operations_are_not_also_written_on_their_own(capsys):
 def test_two_requests_in_flight_do_not_mix(capsys):
     """Verify that two requests in flight do not mix."""
     first = RequestLogMiddleware(
-        build_app([(Module.DATABASE, "user.get_user"), (Module.DATABASE, "user.get_user_memories")])
+        build_app(
+            [
+                (Module.DATABASE, "user.get_user"),
+                (Module.DATABASE, "user.get_user_memories"),
+            ]
+        )
     )
     second = RequestLogMiddleware(
         build_app([(Module.TOOL, "calculator"), (Module.TOOL, "calculate_roi")])
@@ -398,6 +408,7 @@ def test_the_query_string_never_reaches_the_log(capsys):
 
     async def call_with_query(app):
         """Invoke the ASGI application with a query string for log assertions."""
+
         async def receive():
             """Supply a simulated ASGI request message."""
             return {"type": "http.request"}
@@ -455,26 +466,28 @@ def test_streaming_is_off_unless_asked_for():
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
 def test_streaming_is_turned_on_by_the_environment(monkeypatch, value):
     """Verify that streaming is turned on by the environment."""
-    monkeypatch.setenv('AEKO_LOG_STREAM', value)
+    monkeypatch.setenv("AEKO_LOG_STREAM", value)
     assert streaming() is True
 
 
 def test_streaming_writes_each_operation_as_it_finishes(monkeypatch, capsys):
     """Verify that streaming writes each operation as it finishes."""
-    monkeypatch.setenv('AEKO_LOG_STREAM', "true")
+    monkeypatch.setenv("AEKO_LOG_STREAM", "true")
     app = RequestLogMiddleware(build_app([(Module.DATABASE, "user.get_user")]))
 
     asyncio.run(call(app))
 
     output = capsys.readouterr().out.splitlines()
-    assert output[0].endswith("user.get_user succeeded in " + output[0].split(" in ")[-1])
+    assert output[0].endswith(
+        "user.get_user succeeded in " + output[0].split(" in ")[-1]
+    )
     assert "[database]" in output[0]
     assert HEADER.match(output[1])
 
 
 def test_streaming_still_closes_the_request_with_a_header(monkeypatch, capsys):
     """Verify that streaming still closes the request with a header."""
-    monkeypatch.setenv('AEKO_LOG_STREAM', "true")
+    monkeypatch.setenv("AEKO_LOG_STREAM", "true")
 
     asyncio.run(call(RequestLogMiddleware(build_app()), "GET", "/x"))
 
@@ -506,7 +519,9 @@ def test_the_application_installs_the_middleware(api_main):
 def test_the_lifespan_silences_uvicorn(api_main, monkeypatch):
     """Verify that the lifespan silences uvicorn."""
     silenced = []
-    monkeypatch.setattr(api_main, "silence_uvicorn_access_log", lambda: silenced.append(True))
+    monkeypatch.setattr(
+        api_main, "silence_uvicorn_access_log", lambda: silenced.append(True)
+    )
 
     with TestClient(api_main.app):
         pass
@@ -521,7 +536,9 @@ def test_the_real_application_closes_a_request_with_a_block(api_main, capsys):
         client.get("/no-such-endpoint")
 
     (block,) = blocks(capsys)
-    assert HEADER.match(block[0])["description"].startswith("GET /no-such-endpoint -> 404 in ")
+    assert HEADER.match(block[0])["description"].startswith(
+        "GET /no-such-endpoint -> 404 in "
+    )
 
 
 def test_a_route_reaches_the_block_from_the_threadpool(api_main, capsys):

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 from hub_metrics.entity import Metric
 
+
 class IRepository(ABC):
     @abstractmethod
     def create_metric(self, metric: Metric) -> Metric:
@@ -14,6 +15,7 @@ class IRepository(ABC):
     def get_all_metrics(self) -> list[Metric]:
         """Retrieve all stored metrics."""
         pass
+
 
 class IService(ABC):
     @abstractmethod

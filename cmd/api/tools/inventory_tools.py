@@ -23,7 +23,7 @@ from cmd.api.tools.constants import (
     GET_INVENTORY_ANALYSIS_DESCRIPTION,
 )
 from cmd.api.tools.mongo_tools import _positive_int, _required_text
-from upload_ticket.entity import STATE_UPLOADED
+from upload_ticket.constants import STATE_UPLOADED
 
 
 logger = logging.getLogger(__name__)
@@ -98,10 +98,12 @@ def _host_file(file: Any) -> dict:
 
 
 def _inventory_submission_failed() -> None:
+    """Raise the stable client error and hide the underlying cause."""
     raise RuntimeError("Inventory submission failed. Try again later.")
 
 
 def _blocked_ip(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Return whether a host is a blocked private or local address."""
     if address.version == 6 and address.ipv4_mapped is not None:
         address = address.ipv4_mapped
     return bool(
@@ -123,13 +125,12 @@ def _chatgpt_allowed_hosts() -> set[str]:
             "CHATGPT_FILE_ALLOWED_HOSTS is not set. Please set it in the environment."
         )
     return {
-        part.strip().lower().rstrip(".")
-        for part in value.split(",")
-        if part.strip()
+        part.strip().lower().rstrip(".") for part in value.split(",") if part.strip()
     }
 
 
 def _assert_safe_chatgpt_download_url(download_url: str) -> None:
+    """Reject ChatGPT file URLs that are not public HTTPS targets."""
     parsed = urlparse(download_url)
     if parsed.scheme != "https":
         _inventory_submission_failed()
@@ -163,6 +164,7 @@ def _assert_safe_chatgpt_download_url(download_url: str) -> None:
 
 
 def _max_chatgpt_file_bytes() -> int:
+    """Return the maximum ChatGPT file size allowed for download."""
     value = os.environ.get("CHATGPT_FILE_MAX_BYTES", "")
     if value == "":
         raise RuntimeError(
@@ -172,6 +174,7 @@ def _max_chatgpt_file_bytes() -> int:
 
 
 def _read_chatgpt_file_bytes(response, max_bytes: int) -> bytes:
+    """Download ChatGPT file bytes after validating the URL."""
     chunks: list[bytes] = []
     total = 0
     try:
@@ -245,11 +248,7 @@ def ingest_chatgpt_inventory(
         logger.warning("Inventory submission failed: %s", exc)
         raise RuntimeError("Inventory submission failed. Try again later.") from None
     _tickets().record_created_inventory(identifier, inventory["id"])
-    return {
-        key: inventory[key]
-        for key in _inventory_response_keys
-        if key in inventory
-    }
+    return {key: inventory[key] for key in _inventory_response_keys if key in inventory}
 
 
 def _analyze_inventory(
@@ -295,11 +294,7 @@ def _analyze_inventory(
         logger.warning("Inventory submission failed: %s", exc)
         raise RuntimeError("Inventory submission failed. Try again later.") from None
     _tickets().mark_consumed(identifier, ticket_value, inventory["id"])
-    return {
-        key: inventory[key]
-        for key in _inventory_response_keys
-        if key in inventory
-    }
+    return {key: inventory[key] for key in _inventory_response_keys if key in inventory}
 
 
 def _analyze_inventory_chatgpt(
@@ -328,7 +323,9 @@ def _get_inventory_analysis(
     identifier = _positive_int(id_external_user, "id_external_user")
     inventory_id = _positive_int(id, "id")
     if inventory_id not in _tickets().created_inventory_ids(identifier):
-        raise ValueError("inventory was not created through this user's upload tickets.")
+        raise ValueError(
+            "inventory was not created through this user's upload tickets."
+        )
 
     try:
         plan = _plans().get_by_id_external_inventory(inventory_id)
@@ -340,7 +337,9 @@ def _get_inventory_analysis(
     except RuntimeError:
         bound_company = None
     if bound_company is not None and plan.id_external_company != bound_company:
-        raise ValueError("inventory was not created through this user's upload tickets.")
+        raise ValueError(
+            "inventory was not created through this user's upload tickets."
+        )
 
     return {
         "defined_problem": plan.defined_problem,

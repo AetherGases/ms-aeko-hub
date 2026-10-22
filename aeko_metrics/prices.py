@@ -7,6 +7,7 @@ import os
 
 
 def _normalize_model_id(model: str) -> str:
+    """Normalize a provider model id to its trailing name."""
     text = model.strip().lower()
     if text.startswith("models/"):
         text = text[len("models/") :]
@@ -14,6 +15,7 @@ def _normalize_model_id(model: str) -> str:
 
 
 def _rates_from_entry(entry: dict | None) -> tuple[float, float]:
+    """Read input and output USD-per-million rates from a price row."""
     if not entry:
         return (0.0, 0.0)
     input_rate = float(entry.get("input_per_million", 0) or 0)

@@ -196,7 +196,6 @@ def _calculate_roi(request_input: str | dict[str, Any] | None = "") -> dict[str,
         "vp_total": _round(vp_total),
         "vpl": _round(npv),
         "roi_percent": _round(npv / capex * 100),
-
         "viable": capex <= vp_total,
     }
 
@@ -219,7 +218,6 @@ def _calculate_payback(
         "months": ROI_HORIZON_MONTHS,
         "vp_total": _round(vp_total),
         "payback_months": _payback_month(present_values, capex),
-
         "viable": capex <= vp_total,
     }
 

@@ -32,10 +32,12 @@ load_dotenv()
 
 
 def _int_or_none(value: str | None) -> int | None:
+    """Parse an integer setting, or return None when it is empty."""
     return int(value) if value else None
 
 
 def _float_or_none(value: str | None) -> float | None:
+    """Parse a float setting, or return None when it is empty."""
     return float(value) if value else None
 
 
@@ -72,6 +74,7 @@ class _SummaryGenerator:
     """Adapt domain messages before delegating to the SDK summarizer."""
 
     def __init__(self, messenger: AekoMessenger):
+        """Bind the SDK session factory used to generate memory summaries."""
         self.messenger = messenger
 
     def generate_summary(self, messages, *, id_request: str):

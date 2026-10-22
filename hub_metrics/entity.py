@@ -20,6 +20,7 @@ class Metric:
         origin: str = "internal",
         created_at: datetime | None = None,
     ):
+        """Store the fields of one HTTP request metric."""
         self.id = id
         self.latency = latency
         self.response_status = response_status

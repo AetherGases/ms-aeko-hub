@@ -2,18 +2,8 @@
 
 from typing import Any
 
+from cmd.api.integrations.constants import PROFILE_MS_PATH, _TOOL_PROFILE_KEYS
 from cmd.api.integrations.ms_auth_http import base_url, request_json
-
-PROFILE_MS_PATH = "/api/profile"
-
-_TOOL_PROFILE_KEYS = (
-    "id",
-    "email",
-    "name",
-    "image",
-    "enterprise",
-    "unit",
-)
 
 
 class ProfileError(RuntimeError):
@@ -32,7 +22,9 @@ def get_profile(access_token: str) -> dict:
     )
 
 
-def profile_tool_catalog(ms_payload: dict, *, role: str, usecase: str) -> dict[str, Any]:
+def profile_tool_catalog(
+    ms_payload: dict, *, role: str, usecase: str
+) -> dict[str, Any]:
     """Merge the ms-auth profile with Mongo role and usecase, omitting CPF, phone, and permissions."""
 
     catalog = {key: ms_payload[key] for key in _TOOL_PROFILE_KEYS if key in ms_payload}

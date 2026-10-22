@@ -4,7 +4,11 @@ from datetime import datetime
 
 import pytest
 
-from cmd.api.integrations.a2a.entity import A2AMessage, A2A_RECIPIENT_AEKO, A2A_SENDER_CHATGPT
+from cmd.api.integrations.a2a.entity import (
+    A2AMessage,
+    A2A_RECIPIENT_AEKO,
+    A2A_SENDER_CHATGPT,
+)
 from cmd.api.integrations.a2a.service import Service
 from session.entity import Message, SendMessageResult, Session
 from session.session import GuardrailRejectedError

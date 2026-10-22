@@ -20,7 +20,9 @@ def test_parse_expression_drops_surrounding_whitespace():
 
 def test_parse_expression_accepts_an_expression_spelled_over_several_lines():
     """Verify that parse expression accepts an expression spelled over several lines."""
-    assert calculator._parse_expression("(1200 * 2.68)\n+ 300") == "(1200 * 2.68)\n+ 300"
+    assert (
+        calculator._parse_expression("(1200 * 2.68)\n+ 300") == "(1200 * 2.68)\n+ 300"
+    )
 
 
 @pytest.mark.parametrize("expression", ["", "   ", "\n", None, 42, ["2 + 2"]])
@@ -380,4 +382,6 @@ def test_get_calculator_tools_entry_is_backed_by_the_calculation():
 
 def test_get_calculator_tools_builds_a_fresh_tool_each_time():
     """Verify that get calculator tools builds a fresh tool each time."""
-    assert calculator.get_calculator_tools()[0] is not calculator.get_calculator_tools()[0]
+    assert (
+        calculator.get_calculator_tools()[0] is not calculator.get_calculator_tools()[0]
+    )

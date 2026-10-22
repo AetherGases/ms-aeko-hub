@@ -8,6 +8,7 @@ from oauth.cache.secret import open_ms_auth_access_token, seal_ms_auth_access_to
 
 class Repository:
     def __init__(self, redis_client):
+        """Bind the Redis client used for authorization codes."""
         self.redis = redis_client
 
     def save(self, code, document, ttl) -> None:

@@ -18,11 +18,13 @@ class User:
         usecase: str,
         id_external_company: int | None = None,
     ):
+        """Store user identity and profile fields."""
         self.id = id
         self.id_external_user = id_external_user
         self.role = role
         self.usecase = usecase
         self.id_external_company = id_external_company
+
 
 class UserMemory:
     id: str
@@ -32,7 +34,16 @@ class UserMemory:
     created_at: datetime | None
     expires_at: datetime | None
 
-    def __init__(self, id: str, id_user: str, field: str, description: str, created_at: datetime | None = None, expires_at: datetime | None = None):
+    def __init__(
+        self,
+        id: str,
+        id_user: str,
+        field: str,
+        description: str,
+        created_at: datetime | None = None,
+        expires_at: datetime | None = None,
+    ):
+        """Store one user memory document."""
         self.id = id
         self.id_user = id_user
         self.field = field

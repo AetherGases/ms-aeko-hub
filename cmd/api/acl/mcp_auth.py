@@ -11,7 +11,8 @@ import json
 
 from starlette.concurrency import run_in_threadpool
 
-from cmd.api.acl.open_ai.catalog import ANONYMOUS_CHATGPT_TOOL_NAMES
+from cmd.api.acl.constants import ERROR_DESCRIPTION, MCP_MAX_BODY_BYTES
+from cmd.api.acl.open_ai.constants import ANONYMOUS_CHATGPT_TOOL_NAMES
 from cmd.api.acl.ms_auth_security import resolve_ms_auth_access_token
 from cmd.api.acl.open_ai.identity import (
     attach_id_external_company,
@@ -29,9 +30,6 @@ from cmd.api.acl.open_ai.identity import (
 )
 from oauth.discovery import mcp_protected_resource_metadata_url
 from oauth.token import decode_access_token
-
-ERROR_DESCRIPTION = "You need to login to continue"
-MCP_MAX_BODY_BYTES = 1 * 1024 * 1024
 
 _sessions = None
 
@@ -62,6 +60,7 @@ def wrap_mcp_auth(app):
 
 class _McpAuthApp:
     def __init__(self, app):
+        """Wrap the inner ASGI application."""
         self.app = app
 
     @property
@@ -70,6 +69,7 @@ class _McpAuthApp:
         return self.app.routes
 
     async def __call__(self, scope, receive, send):
+        """Authenticate ChatGPT MCP POSTs before forwarding them."""
         if scope["type"] != "http" or scope["method"] != "POST":
             await self.app(scope, receive, send)
             return
@@ -135,6 +135,7 @@ class _McpAuthApp:
 
 
 def _requires_chatgpt_identity(payload) -> bool:
+    """Return whether a JSON-RPC payload names an authenticated tool."""
     if payload.get("method") != "tools/call":
         return False
     params = payload.get("params")
@@ -143,6 +144,7 @@ def _requires_chatgpt_identity(payload) -> bool:
 
 
 def _bearer_token(scope) -> str | None:
+    """Read the Bearer token from ASGI headers, if present."""
     for key, value in scope.get("headers", []):
         if key.lower() != b"authorization":
             continue
@@ -155,6 +157,7 @@ def _bearer_token(scope) -> str | None:
 
 
 def _content_length(scope) -> int | None:
+    """Read the Content-Length header as an integer, if valid."""
     for key, value in scope.get("headers", []):
         if key.lower() != b"content-length":
             continue
@@ -166,6 +169,7 @@ def _content_length(scope) -> int | None:
 
 
 async def _drain_body(receive) -> None:
+    """Consume remaining request body chunks without buffering them."""
     more = True
     while more:
         message = await receive()
@@ -176,6 +180,7 @@ async def _drain_body(receive) -> None:
 
 
 async def _read_body(receive) -> bytes:
+    """Buffer the request body until complete or over the size limit."""
     chunks: list[bytes] = []
     total = 0
     more = True
@@ -195,6 +200,7 @@ async def _read_body(receive) -> bytes:
 
 
 def _replay_body(body: bytes, receive):
+    """Return a receive callable that replays a buffered request body."""
     sent = False
 
     async def replay():
@@ -209,6 +215,7 @@ def _replay_body(body: bytes, receive):
 
 
 def _json_object(body: bytes):
+    """Parse a JSON object from bytes, or return None."""
     try:
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -217,6 +224,7 @@ def _json_object(body: bytes):
 
 
 async def _send_too_large(send) -> None:
+    """Send HTTP 413 when the MCP body exceeds the configured limit."""
     raw = b"Request body too large"
     await send(
         {
@@ -232,6 +240,7 @@ async def _send_too_large(send) -> None:
 
 
 async def _send_unauthorized(send, request_id) -> None:
+    """Send JSON-RPC unauthorized with a WWW-Authenticate challenge."""
     challenge = www_authenticate_value()
     meta = {"mcp/www_authenticate": [challenge]}
     payload = {

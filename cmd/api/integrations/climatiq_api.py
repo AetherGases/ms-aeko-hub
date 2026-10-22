@@ -11,52 +11,19 @@ from typing import Any
 import requests
 from langchain_core.tools import Tool
 
+from cmd.api.integrations.constants import (
+    CLIMATIQ_BASE_URL,
+    CLIMATIQ_DATA_VERSION,
+    CLIMATIQ_ESTIMATE_DESCRIPTION,
+    CLIMATIQ_ESTIMATE_FIELDS,
+    CLIMATIQ_ESTIMATE_URL,
+    CLIMATIQ_REQUEST_TIMEOUT,
+    CLIMATIQ_RESULTS_PER_PAGE,
+    CLIMATIQ_SEARCH_DESCRIPTION,
+    CLIMATIQ_SEARCH_URL,
+    CLIMATIQ_SELECTOR_FIELDS,
+)
 from internal.shared import Module, logged
-
-
-CLIMATIQ_BASE_URL = "https://api.climatiq.io/data/v1"
-CLIMATIQ_SEARCH_URL = f"{CLIMATIQ_BASE_URL}/search"
-CLIMATIQ_ESTIMATE_URL = f"{CLIMATIQ_BASE_URL}/estimate"
-CLIMATIQ_DATA_VERSION = "^37"
-CLIMATIQ_REQUEST_TIMEOUT = 60.0
-CLIMATIQ_RESULTS_PER_PAGE = 5
-
-CLIMATIQ_SELECTOR_FIELDS = (
-    "source",
-    "source_dataset",
-    "region",
-    "region_fallback",
-    "year",
-    "year_fallback",
-    "scope",
-    "source_lca_activity",
-    "calculation_method",
-)
-
-
-CLIMATIQ_ESTIMATE_FIELDS = ("apply_inflation_adjustment",)
-
-CLIMATIQ_SEARCH_DESCRIPTION = (
-    "Searches Climatiq's emission factor database for a material, product, "
-    "fuel or activity. Input is the description in plain text (e.g. 'cimento "
-    "portland'). Returns candidate emission factors, each with its "
-    "'activity_id', its 'unit_type' (which says whether it is measured by "
-    "weight, money, energy or distance), its region and its year. Use this "
-    "first to find the right factor, then pass the chosen 'activity_id' to "
-    "climatiq_estimate to get the emissions."
-)
-CLIMATIQ_ESTIMATE_DESCRIPTION = (
-    "Calculates the carbon emissions of an activity, using an emission factor "
-    "found with climatiq_search. Input is a JSON object string with "
-    '"activity_id" (from the search results) and "parameters" (how much of '
-    "the activity, as the value and its unit) — for example "
-    '\'{"activity_id": "building_materials-type_cement", "parameters": '
-    '{"weight": 100, "weight_unit": "t"}}\'. The parameter name must match the '
-    "factor's unit_type: weight/weight_unit, money/money_unit, "
-    'energy/energy_unit or distance/distance_unit. Optional: "region", '
-    '"year", "source", "region_fallback", "year_fallback". Returns kg CO2e '
-    "together with the emission factor that produced it."
-)
 
 
 class ClimatiqError(RuntimeError):
@@ -67,7 +34,7 @@ def _api_key(api_key: str | None = None) -> str:
     """Resolve the Climatiq credential from the argument or environment and reject an empty key."""
 
     if api_key is None:
-        api_key = os.environ.get('CLIMATIQ_API_KEY', "")
+        api_key = os.environ.get("CLIMATIQ_API_KEY", "")
 
     if api_key == "":
         raise RuntimeError(
@@ -85,9 +52,12 @@ def _error_detail(response: Any) -> str:
     except ValueError:
         return response.text.strip()
 
-    return " - ".join(
-        str(body[field]) for field in ("error_code", "message") if field in body
-    ) or response.text.strip()
+    return (
+        " - ".join(
+            str(body[field]) for field in ("error_code", "message") if field in body
+        )
+        or response.text.strip()
+    )
 
 
 def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -> Any:
@@ -100,7 +70,9 @@ def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -
             method, url, headers=headers, timeout=CLIMATIQ_REQUEST_TIMEOUT, **kwargs
         )
     except requests.RequestException as exc:
-        raise ClimatiqError(f"Could not reach the Climatiq API at {url}: {exc}") from exc
+        raise ClimatiqError(
+            f"Could not reach the Climatiq API at {url}: {exc}"
+        ) from exc
 
     if response.status_code >= 400:
         raise ClimatiqError(
@@ -154,7 +126,9 @@ def _parse_search_query(query: str | None) -> str:
     return query.strip()
 
 
-def _parse_estimate_request(request_input: str | dict[str, Any] | None) -> dict[str, Any]:
+def _parse_estimate_request(
+    request_input: str | dict[str, Any] | None,
+) -> dict[str, Any]:
     """Validate estimate input and build the factor selector and activity payload."""
 
     request = _as_object(request_input)
@@ -173,7 +147,12 @@ def _parse_estimate_request(request_input: str | dict[str, Any] | None) -> dict[
             f'{{"weight": 100, "weight_unit": "t"}}), got {parameters!r}.'
         )
 
-    known = {"activity_id", "parameters", *CLIMATIQ_SELECTOR_FIELDS, *CLIMATIQ_ESTIMATE_FIELDS}
+    known = {
+        "activity_id",
+        "parameters",
+        *CLIMATIQ_SELECTOR_FIELDS,
+        *CLIMATIQ_ESTIMATE_FIELDS,
+    }
     unknown = sorted(set(request) - known)
     if unknown != []:
         accepted = ", ".join((*CLIMATIQ_SELECTOR_FIELDS, *CLIMATIQ_ESTIMATE_FIELDS))
@@ -187,12 +166,20 @@ def _parse_estimate_request(request_input: str | dict[str, Any] | None) -> dict[
         "data_version": CLIMATIQ_DATA_VERSION,
     }
     selector.update(
-        {field: request[field] for field in CLIMATIQ_SELECTOR_FIELDS if field in request}
+        {
+            field: request[field]
+            for field in CLIMATIQ_SELECTOR_FIELDS
+            if field in request
+        }
     )
 
     payload: dict[str, Any] = {"emission_factor": selector, "parameters": parameters}
     payload.update(
-        {field: request[field] for field in CLIMATIQ_ESTIMATE_FIELDS if field in request}
+        {
+            field: request[field]
+            for field in CLIMATIQ_ESTIMATE_FIELDS
+            if field in request
+        }
     )
 
     return payload
@@ -217,7 +204,9 @@ def _climatiq_search(query: str | None = "") -> Any:
 def _climatiq_estimate(request_input: str | dict[str, Any] | None = "") -> Any:
     """Estimate emissions using the selected factor and supplied activity quantities."""
 
-    return _request("POST", CLIMATIQ_ESTIMATE_URL, json=_parse_estimate_request(request_input))
+    return _request(
+        "POST", CLIMATIQ_ESTIMATE_URL, json=_parse_estimate_request(request_input)
+    )
 
 
 def get_climatiq_tools() -> list[Tool]:

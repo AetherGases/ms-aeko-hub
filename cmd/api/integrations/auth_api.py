@@ -1,8 +1,7 @@
 """Frozen HTTP client for the auth microservice login endpoint."""
 
+from cmd.api.integrations.constants import AUTH_MS_LOGIN_PATH
 from cmd.api.integrations.ms_auth_http import base_url, request_json
-
-AUTH_MS_LOGIN_PATH = "/api/auth/login"
 
 
 class AuthError(RuntimeError):

@@ -36,7 +36,7 @@ DURATION = re.compile(r"\d+\.\d+ms")
 @pytest.fixture(autouse=True)
 def no_color_override(monkeypatch):
     """Clear the color override for terminal-detection tests."""
-    monkeypatch.delenv('AEKO_LOG_COLOR', raising=False)
+    monkeypatch.delenv("AEKO_LOG_COLOR", raising=False)
 
 
 class Stream:
@@ -74,12 +74,17 @@ def only_line(captured):
 def test_format_entry_writes_the_agreed_shape():
     """Verify that format entry writes the agreed shape."""
     entry = format_entry(Module.DATABASE, "session.get_session ok", moment=MOMENT)
-    assert entry == f"[{APP_NAME}] [database] [2026-09-03T10:15:30Z] session.get_session ok"
+    assert (
+        entry
+        == f"[{APP_NAME}] [database] [2026-09-03T10:15:30Z] session.get_session ok"
+    )
 
 
 def test_format_entry_names_the_application_in_every_line():
     """Verify that format entry names the application in every line."""
-    assert format_entry(Module.TOOL, "calculator", moment=MOMENT).startswith("[aeko-hub] ")
+    assert format_entry(Module.TOOL, "calculator", moment=MOMENT).startswith(
+        "[aeko-hub] "
+    )
 
 
 @pytest.mark.parametrize(
@@ -98,7 +103,9 @@ def test_format_entry_writes_the_module_value_not_its_member_name(module, expect
 
 def test_format_entry_accepts_a_plain_string_module():
     """Verify that format entry accepts a plain string module."""
-    assert LINE.match(format_entry("database", "x", moment=MOMENT))["module"] == "database"
+    assert (
+        LINE.match(format_entry("database", "x", moment=MOMENT))["module"] == "database"
+    )
 
 
 def test_format_entry_stamps_utc_rather_than_local_time():
@@ -116,7 +123,9 @@ def test_format_entry_stamps_now_when_no_moment_is_given():
 
 def test_format_entry_keeps_the_description_verbatim():
     """Verify that format entry keeps the description verbatim."""
-    description = "chroma.query_gases_info failed after 3.2ms: LookupError: no such tool"
+    description = (
+        "chroma.query_gases_info failed after 3.2ms: LookupError: no such tool"
+    )
     assert format_entry(Module.MCP, description, moment=MOMENT).endswith(description)
 
 
@@ -133,26 +142,27 @@ def test_color_is_withheld_from_a_redirected_stream():
 @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
 def test_color_override_turns_it_on_for_a_file(monkeypatch, value):
     """Verify that color override turns it on for a file."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', value)
+    monkeypatch.setenv("AEKO_LOG_COLOR", value)
     assert color_enabled(Stream(tty=False)) is True
 
 
 @pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "off"])
 def test_color_override_turns_it_off_for_a_terminal(monkeypatch, value):
     """Verify that color override turns it off for a terminal."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', value)
+    monkeypatch.setenv("AEKO_LOG_COLOR", value)
     assert color_enabled(Stream(tty=True)) is False
 
 
 def test_an_unreadable_override_falls_back_to_asking_the_stream(monkeypatch):
     """Verify that an unreadable override falls back to asking the stream."""
-    monkeypatch.setenv('AEKO_LOG_COLOR', "maybe")
+    monkeypatch.setenv("AEKO_LOG_COLOR", "maybe")
     assert color_enabled(Stream(tty=True)) is True
     assert color_enabled(Stream(tty=False)) is False
 
 
 def test_a_stream_without_isatty_is_not_a_terminal():
     """Verify that a stream without isatty is not a terminal."""
+
     class Bare:
         def write(self, text):
             """Append output to the simulated stream."""
@@ -163,6 +173,7 @@ def test_a_stream_without_isatty_is_not_a_terminal():
 
 def test_a_stream_that_refuses_the_question_is_not_a_terminal():
     """Verify that a stream that refuses the question is not a terminal."""
+
     class Hostile:
         def isatty(self):
             """Report the simulated terminal capability."""
@@ -187,7 +198,9 @@ def test_success_writes_one_line_in_the_agreed_shape(capsys):
 
 def test_failure_writes_one_line_in_the_agreed_shape(capsys):
     """Verify that failure writes one line in the agreed shape."""
-    log_failure(Module.MCP, "chroma.start failed after 2.0ms: MCPSessionError: no server")
+    log_failure(
+        Module.MCP, "chroma.start failed after 2.0ms: MCPSessionError: no server"
+    )
     line = LINE.match(only_line(capsys.readouterr()))
     assert line["module"] == "mcp"
     assert line["description"].startswith("chroma.start failed after ")
@@ -314,6 +327,7 @@ def test_operation_without_detail_leaves_no_double_space(capsys):
 
 def test_logged_returns_what_the_function_returned(capsys):
     """Verify that logged returns what the function returned."""
+
     @logged(Module.TOOL, "calculator")
     def calculate(expression):
         """Exercise calculator operation logging."""
@@ -325,6 +339,7 @@ def test_logged_returns_what_the_function_returned(capsys):
 
 def test_logged_falls_back_to_the_function_name(capsys):
     """Verify that logged falls back to the function name."""
+
     @logged(Module.TOOL)
     def calculate():
         """Exercise calculator operation logging."""
@@ -362,6 +377,7 @@ def test_logged_passes_every_argument_through():
 
 def test_logged_reports_and_re_raises(capsys):
     """Verify that logged reports and re raises."""
+
     @logged(Module.INTEGRATION, "climatiq.search")
     def search():
         """Exercise search operation logging."""

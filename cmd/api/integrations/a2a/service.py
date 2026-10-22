@@ -30,6 +30,7 @@ def _positive_int(value: Any, field_name: str) -> int:
 
 
 def _effective_session_name(session_name: str | None) -> str | None:
+    """Return a usable session name, generating one when missing."""
     if session_name is None:
         return None
     stripped = session_name.strip()
@@ -40,6 +41,7 @@ def _effective_session_name(session_name: str | None) -> str | None:
 
 class Service(IService):
     def __init__(self, users, sessions, user_repository: IUserRepository):
+        """Bind the session, user, and messenger collaborators."""
         self.users = users
         self.sessions = sessions
         self.user_repository = user_repository
@@ -64,9 +66,7 @@ class Service(IService):
                 user_sessions = []
 
             matching = [
-                session
-                for session in user_sessions
-                if session.name == session_name
+                session for session in user_sessions if session.name == session_name
             ]
             if not matching:
                 raise ValueError(

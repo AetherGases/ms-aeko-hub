@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+
 class ImprovementPlan:
     id: str | None
     id_external_inventory: int | None
@@ -12,7 +13,18 @@ class ImprovementPlan:
     reasoning: str
     updated_at: datetime | None
 
-    def __init__(self, id: str | None = None, id_external_inventory: int | None = None, id_external_unit: int | None = None, id_external_company: int | None = None, defined_problem: str = "", method: str = "", reasoning: str = "", updated_at: datetime | None = None):
+    def __init__(
+        self,
+        id: str | None = None,
+        id_external_inventory: int | None = None,
+        id_external_unit: int | None = None,
+        id_external_company: int | None = None,
+        defined_problem: str = "",
+        method: str = "",
+        reasoning: str = "",
+        updated_at: datetime | None = None,
+    ):
+        """Store the fields of an improvement plan."""
         self.id = id
         self.id_external_inventory = id_external_inventory
         self.id_external_unit = id_external_unit
@@ -23,6 +35,7 @@ class ImprovementPlan:
         self.updated_at = updated_at
 
     def __str__(self) -> str:
+        """Return a readable representation of the plan."""
         return (
             "ImprovementPlan("
             f"id={self.id}, "
@@ -58,6 +71,7 @@ class InventoryEmission:
         is_upstream: bool | None = None,
         is_reduction: bool = False,
     ):
+        """Store one extracted inventory emission row."""
         self.quantity_co2e = quantity_co2e
         self.methodology_description = methodology_description
         self.supplier_data_percentage = supplier_data_percentage
@@ -81,6 +95,7 @@ class ExtractedInventory:
         end_period: str | None = None,
         emissions: list[InventoryEmission] | None = None,
     ):
+        """Store extracted inventory metadata and emissions."""
         self.description = description
         self.start_period = start_period
         self.end_period = end_period

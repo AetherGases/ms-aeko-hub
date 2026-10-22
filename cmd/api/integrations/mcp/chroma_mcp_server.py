@@ -58,9 +58,9 @@ def _build_client() -> Any:
     """Build an authenticated Chroma Cloud client from required settings."""
 
     return CloudClient(
-        tenant=_required_setting('CHROMA_TENANT'),
-        database=_required_setting('CHROMA_DATABASE'),
-        api_key=_required_setting('CHROMA_API_KEY'),
+        tenant=_required_setting("CHROMA_TENANT"),
+        database=_required_setting("CHROMA_DATABASE"),
+        api_key=_required_setting("CHROMA_API_KEY"),
     )
 
 
@@ -136,10 +136,12 @@ def upsert_improvement_plan_problem(
     _get_plan_collection().upsert(
         ids=[str(id_external_inventory)],
         documents=[defined_problem],
-        metadatas=[{
-            "id_external_inventory": id_external_inventory,
-            "id_external_company": id_external_company,
-        }],
+        metadatas=[
+            {
+                "id_external_inventory": id_external_inventory,
+                "id_external_company": id_external_company,
+            }
+        ],
     )
     return {"id": str(id_external_inventory)}
 
@@ -157,7 +159,10 @@ def main() -> None:
     try:
         _get_plan_collection()
     except Exception as exc:
-        print(f"chroma plan-collection warm-up failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(
+            f"chroma plan-collection warm-up failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
 
     mcp.run(transport="stdio")
 

@@ -17,15 +17,15 @@ from improvement_plan.entity import ExtractedInventory
 from improvement_plan.improvement_plan import IService, MalformedPlanError
 from improvement_plan.service import Service
 
+from internal.http.constants import (
+    INTERNAL_AUTHENTICATION_KEY_ENV,
+    UNEXPECTED_SERVER_ERROR,
+)
 from internal.shared import Module, log_failure
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
 
-UNEXPECTED_SERVER_ERROR = "Unexpected server error."
-
 router = APIRouter(tags=["Reports"])
-
-INTERNAL_AUTHENTICATION_KEY_ENV = "INTERNAL_AUTHENTICATION_KEY"
 
 CategoryClassification = Literal["UPSTREAM", "DOWNSTREAM"]
 
@@ -47,28 +47,68 @@ def require_inventory_report_authentication_key(
 
 
 class CatalogItemData(BaseModel):
-    id: int = Field(..., description="Catalog identifier used as a foreign key on extracted emissions.", json_schema_extra={"example": 1})
-    name: str = Field(..., description="Catalog display name.", json_schema_extra={"example": "CO2"})
+    id: int = Field(
+        ...,
+        description="Catalog identifier used as a foreign key on extracted emissions.",
+        json_schema_extra={"example": 1},
+    )
+    name: str = Field(
+        ..., description="Catalog display name.", json_schema_extra={"example": "CO2"}
+    )
 
     model_config = ConfigDict(frozen=True)
 
 
 class CategoryCatalogItemData(BaseModel):
-    id: int = Field(..., description="Category identifier used as a foreign key on extracted emissions.", json_schema_extra={"example": 1})
-    name: str = Field(..., description="Category display name.", json_schema_extra={"example": "Combustão estacionária"})
-    classification: CategoryClassification | None = Field(None, description="Whether the category is upstream, downstream, or unclassified.", json_schema_extra={"example": None})
+    id: int = Field(
+        ...,
+        description="Category identifier used as a foreign key on extracted emissions.",
+        json_schema_extra={"example": 1},
+    )
+    name: str = Field(
+        ...,
+        description="Category display name.",
+        json_schema_extra={"example": "Combustão estacionária"},
+    )
+    classification: CategoryClassification | None = Field(
+        None,
+        description="Whether the category is upstream, downstream, or unclassified.",
+        json_schema_extra={"example": None},
+    )
 
     model_config = ConfigDict(frozen=True)
 
 
 class ReportRequestData(BaseModel):
-    id_external_context_inventory: int = Field(..., description="External inventory identifier analyzed and stored on the resulting plan.", json_schema_extra={"example": 502})
-    inventory: str = Field(..., description="Inventory content as Markdown.", json_schema_extra={"example": "## Escopo 1"})
-    id_external_user: int = Field(..., description="External user identifier responsible for the report.", json_schema_extra={"example": 12345})
-    id_external_company: int = Field(..., description="External company identifier that owns the inventory and resulting plan.", json_schema_extra={"example": 90})
-    gases: list[CatalogItemData] = Field(..., description="Gas catalog in force for this analysis.")
-    scopes: list[CatalogItemData] = Field(..., description="Scope catalog in force for this analysis.")
-    categories: list[CategoryCatalogItemData] = Field(..., description="Category catalog in force for this analysis.")
+    id_external_context_inventory: int = Field(
+        ...,
+        description="External inventory identifier analyzed and stored on the resulting plan.",
+        json_schema_extra={"example": 502},
+    )
+    inventory: str = Field(
+        ...,
+        description="Inventory content as Markdown.",
+        json_schema_extra={"example": "## Escopo 1"},
+    )
+    id_external_user: int = Field(
+        ...,
+        description="External user identifier responsible for the report.",
+        json_schema_extra={"example": 12345},
+    )
+    id_external_company: int = Field(
+        ...,
+        description="External company identifier that owns the inventory and resulting plan.",
+        json_schema_extra={"example": 90},
+    )
+    gases: list[CatalogItemData] = Field(
+        ..., description="Gas catalog in force for this analysis."
+    )
+    scopes: list[CatalogItemData] = Field(
+        ..., description="Scope catalog in force for this analysis."
+    )
+    categories: list[CategoryCatalogItemData] = Field(
+        ..., description="Category catalog in force for this analysis."
+    )
 
     model_config = ConfigDict(frozen=True)
 
@@ -85,37 +125,94 @@ class ReportRequestData(BaseModel):
                 raise ValueError(f"{name} contains duplicate ids.")
             if name == "categories":
                 for item in items:
-                    if item.classification is not None and item.classification not in CATEGORY_CLASSIFICATIONS:
+                    if (
+                        item.classification is not None
+                        and item.classification not in CATEGORY_CLASSIFICATIONS
+                    ):
                         raise ValueError("categories classification is invalid.")
         return self
 
 
 class InventoryEmissionData(BaseModel):
-    quantity_co2e: float = Field(..., description="Emission or reduction quantity in tCO2e.", json_schema_extra={"example": 12400.0})
-    methodology_description: str | None = Field(None, description="How the quantity was obtained.", json_schema_extra={"example": "stationary combustion"})
-    supplier_data_percentage: float | None = Field(None, description="Share of the quantity backed by supplier data.", json_schema_extra={"example": None})
-    gas: int | None = Field(None, description="Gas catalog identifier.", json_schema_extra={"example": 1})
-    scope: int | None = Field(None, description="Scope catalog identifier.", json_schema_extra={"example": 1})
-    category: int | None = Field(None, description="Category catalog identifier.", json_schema_extra={"example": None})
-    is_upstream: bool | None = Field(None, description="Whether the emission is classified as upstream.", json_schema_extra={"example": None})
-    is_reduction: bool = Field(..., description="Whether the row is a reduction rather than an emission.", json_schema_extra={"example": False})
+    quantity_co2e: float = Field(
+        ...,
+        description="Emission or reduction quantity in tCO2e.",
+        json_schema_extra={"example": 12400.0},
+    )
+    methodology_description: str | None = Field(
+        None,
+        description="How the quantity was obtained.",
+        json_schema_extra={"example": "stationary combustion"},
+    )
+    supplier_data_percentage: float | None = Field(
+        None,
+        description="Share of the quantity backed by supplier data.",
+        json_schema_extra={"example": None},
+    )
+    gas: int | None = Field(
+        None, description="Gas catalog identifier.", json_schema_extra={"example": 1}
+    )
+    scope: int | None = Field(
+        None, description="Scope catalog identifier.", json_schema_extra={"example": 1}
+    )
+    category: int | None = Field(
+        None,
+        description="Category catalog identifier.",
+        json_schema_extra={"example": None},
+    )
+    is_upstream: bool | None = Field(
+        None,
+        description="Whether the emission is classified as upstream.",
+        json_schema_extra={"example": None},
+    )
+    is_reduction: bool = Field(
+        ...,
+        description="Whether the row is a reduction rather than an emission.",
+        json_schema_extra={"example": False},
+    )
 
     model_config = ConfigDict(frozen=True)
 
 
 class ExtractedInventoryData(BaseModel):
-    description: str | None = Field(None, description="Short description of the analyzed inventory.", json_schema_extra={"example": "Boiler-dominated inventory"})
-    start_period: str | None = Field(None, description="Start of the inventory period.", json_schema_extra={"example": "2025-01-01"})
-    end_period: str | None = Field(None, description="End of the inventory period.", json_schema_extra={"example": "2025-12-31"})
-    emissions: list[InventoryEmissionData] = Field(..., description="Emission and reduction rows extracted from the inventory.")
+    description: str | None = Field(
+        None,
+        description="Short description of the analyzed inventory.",
+        json_schema_extra={"example": "Boiler-dominated inventory"},
+    )
+    start_period: str | None = Field(
+        None,
+        description="Start of the inventory period.",
+        json_schema_extra={"example": "2025-01-01"},
+    )
+    end_period: str | None = Field(
+        None,
+        description="End of the inventory period.",
+        json_schema_extra={"example": "2025-12-31"},
+    )
+    emissions: list[InventoryEmissionData] = Field(
+        ..., description="Emission and reduction rows extracted from the inventory."
+    )
 
     model_config = ConfigDict(frozen=True)
 
 
 class ImprovementPlanReportData(BaseModel):
-    defined_problem: str = Field(..., description="Problem the analysis identified.", json_schema_extra={"example": "high scope 1 emissions"})
-    solving_method: str = Field(..., description="What the plan proposes doing about it.", json_schema_extra={"example": "replace the boiler fleet"})
-    reasoning: str = Field(..., description="Why that method addresses that problem.", json_schema_extra={"example": "direct combustion dominates the inventory"})
+    defined_problem: str = Field(
+        ...,
+        description="Problem the analysis identified.",
+        json_schema_extra={"example": "high scope 1 emissions"},
+    )
+    solving_method: str = Field(
+        ...,
+        description="What the plan proposes doing about it.",
+        json_schema_extra={"example": "replace the boiler fleet"},
+    )
+    reasoning: str = Field(
+        ...,
+        description="Why that method addresses that problem.",
+        json_schema_extra={"example": "direct combustion dominates the inventory"},
+    )
 
     model_config = ConfigDict(frozen=True)
 
@@ -128,7 +225,9 @@ def get_improvement_plan_service(request: Request) -> IService:
 
     from cmd.api.integrations.mcp.chroma_mcp import _upsert_improvement_plan_problem
 
-    return Service(Repository(database), chroma_indexer=_upsert_improvement_plan_problem)
+    return Service(
+        Repository(database), chroma_indexer=_upsert_improvement_plan_problem
+    )
 
 
 def extracted_inventory_data(inventory: ExtractedInventory) -> ExtractedInventoryData:
@@ -198,16 +297,22 @@ def _http_status_for_value_error(exc: ValueError) -> int:
                 }
             },
         },
-        400: {"description": "The inventory Markdown is empty or a domain catalog rule was rejected."},
+        400: {
+            "description": "The inventory Markdown is empty or a domain catalog rule was rejected."
+        },
         404: {
             "description": (
                 "A domain resource referenced by the request was not found "
                 "(for example, the improvement plan for the inventory)."
             ),
         },
-        422: {"description": "The analysis produced no plan or structured inventory in the expected shape."},
+        422: {
+            "description": "The analysis produced no plan or structured inventory in the expected shape."
+        },
         503: {"description": "Database connection is unavailable."},
-        500: {"description": "The Aeko SDK is not initialized or an unexpected error occurred."},
+        500: {
+            "description": "The Aeko SDK is not initialized or an unexpected error occurred."
+        },
     },
 )
 async def input_report(
@@ -216,7 +321,9 @@ async def input_report(
     service: IService = Depends(get_improvement_plan_service),
 ) -> ExtractedInventoryData:
     """Generate a structured inventory in a worker thread and translate domain errors to HTTP responses."""
-    aeko_inventory_analyzer_factory = request.app.state._state.get("aeko_inventory_analyzer_factory")
+    aeko_inventory_analyzer_factory = request.app.state._state.get(
+        "aeko_inventory_analyzer_factory"
+    )
 
     if not aeko_inventory_analyzer_factory:
         raise HTTPException(status_code=500, detail="Aeko SDK is not initialized")
@@ -236,11 +343,15 @@ async def input_report(
         )
         return extracted_inventory_data(inventory)
     except ValueError as exc:
-        raise HTTPException(status_code=_http_status_for_value_error(exc), detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=_http_status_for_value_error(exc), detail=str(exc)
+        ) from exc
     except MalformedPlanError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
-        log_failure(Module.REQUEST, f"Error processing report: {type(exc).__name__}: {exc}")
+        log_failure(
+            Module.REQUEST, f"Error processing report: {type(exc).__name__}: {exc}"
+        )
         raise HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR) from exc
 
 
@@ -263,14 +374,20 @@ async def input_report(
                 }
             },
         },
-        404: {"description": "No improvement plan exists for the supplied inventory identifier."},
+        404: {
+            "description": "No improvement plan exists for the supplied inventory identifier."
+        },
         503: {"description": "Database connection is unavailable."},
         500: {"description": "Unexpected server error."},
     },
 )
 def get_report(
     principal: MsAuth,
-    id_external_inventory: int = Path(..., description="External inventory identifier whose plan should be returned.", examples=[502]),
+    id_external_inventory: int = Path(
+        ...,
+        description="External inventory identifier whose plan should be returned.",
+        examples=[502],
+    ),
     service: IService = Depends(get_improvement_plan_service),
 ) -> ImprovementPlanReportData:
     """Retrieve the stored textual plan for an inventory."""
@@ -279,7 +396,9 @@ def get_report(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
-        log_failure(Module.REQUEST, f"Error retrieving report: {type(exc).__name__}: {exc}")
+        log_failure(
+            Module.REQUEST, f"Error retrieving report: {type(exc).__name__}: {exc}"
+        )
         raise HTTPException(status_code=500, detail=UNEXPECTED_SERVER_ERROR) from exc
     ensure_plan_belongs_to_principal(principal, plan)
     return ImprovementPlanReportData(

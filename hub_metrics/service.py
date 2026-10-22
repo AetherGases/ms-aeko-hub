@@ -3,8 +3,10 @@
 from hub_metrics.entity import Metric
 from hub_metrics.hub_metrics import IService
 
+
 class Service(IService):
     def __init__(self, repository):
+        """Bind the HTTP metrics repository."""
         self.repository = repository
 
     def add_metric(self, metric: Metric) -> Metric:

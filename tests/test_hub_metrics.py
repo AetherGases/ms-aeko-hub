@@ -65,7 +65,7 @@ def build_metric(**overrides) -> Metric:
 @pytest.fixture(autouse=True)
 def no_color(monkeypatch):
     """Disable color output for deterministic log assertions."""
-    monkeypatch.delenv('AEKO_LOG_COLOR', raising=False)
+    monkeypatch.delenv("AEKO_LOG_COLOR", raising=False)
 
 
 @pytest.fixture
@@ -176,7 +176,9 @@ def test_creating_a_metric_stores_the_document(monkeypatch):
 
 def test_creating_a_metric_returns_it_with_the_identifier_mongo_assigned():
     """Verify that creating a metric returns it with the identifier mongo assigned."""
-    repository, _ = build_repository(StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c0aa"))
+    repository, _ = build_repository(
+        StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c0aa")
+    )
 
     stored = repository.create_metric(build_metric())
 
@@ -185,7 +187,9 @@ def test_creating_a_metric_returns_it_with_the_identifier_mongo_assigned():
 
 def test_a_write_that_fails_is_reported_as_a_database_error():
     """Verify that a write that fails is reported as a database error."""
-    repository, _ = build_repository(StubCollection(error=ConnectionError("connection refused")))
+    repository, _ = build_repository(
+        StubCollection(error=ConnectionError("connection refused"))
+    )
 
     with pytest.raises(RuntimeError, match="connection refused"):
         repository.create_metric(build_metric())
@@ -213,7 +217,9 @@ def test_an_empty_collection_reads_as_an_empty_list():
 
 def test_a_read_that_fails_is_reported_as_a_database_error():
     """Verify that a read that fails is reported as a database error."""
-    repository, _ = build_repository(StubCollection(error=ConnectionError("connection refused")))
+    repository, _ = build_repository(
+        StubCollection(error=ConnectionError("connection refused"))
+    )
 
     with pytest.raises(RuntimeError, match="connection refused"):
         repository.get_all_metrics()
@@ -281,7 +287,10 @@ def test_adding_a_metric_returns_what_was_stored():
     """Verify that adding a metric returns what was stored."""
     stored = build_metric(id="1")
 
-    assert Service(StubMetricsRepository(result=stored)).add_metric(build_metric()) is stored
+    assert (
+        Service(StubMetricsRepository(result=stored)).add_metric(build_metric())
+        is stored
+    )
 
 
 def test_a_failed_write_becomes_a_runtime_error():
@@ -359,7 +368,9 @@ def test_a_sink_that_raises_is_given_up_on_rather_than_propagated(capsys):
     finally:
         set_event_sink(None)
 
-    assert descriptions(capsys, "database")[0].startswith("hub_metrics.record gave up: ")
+    assert descriptions(capsys, "database")[0].startswith(
+        "hub_metrics.record gave up: "
+    )
 
 
 def test_every_request_identifier_is_its_own():
@@ -385,7 +396,10 @@ def test_the_endpoint_is_the_route_template_not_the_path_that_was_asked_for():
 
 def test_a_path_that_matched_no_route_is_kept_as_it_came():
     """Verify that a path that matched no route is kept as it came."""
-    assert endpoint_of({"type": "http", "path": "/no-such-endpoint"}) == "/no-such-endpoint"
+    assert (
+        endpoint_of({"type": "http", "path": "/no-such-endpoint"})
+        == "/no-such-endpoint"
+    )
 
 
 def test_a_route_that_carries_no_template_falls_back_to_the_path():
@@ -402,6 +416,7 @@ def test_a_scope_without_even_a_path_still_produces_a_row():
 
 def build_app(operations=(), status=200, raises=None):
     """Build an ASGI application with configurable response behavior."""
+
     async def app(scope, receive, send):
         """Serve the simulated ASGI response used by the test."""
         for module, name in operations:
@@ -419,6 +434,7 @@ def build_app(operations=(), status=200, raises=None):
 
 async def call(app, method="GET", path="/x", sent=None):
     """Invoke the ASGI application with a simulated request scope."""
+
     async def receive():
         """Supply a simulated ASGI request message."""
         return {"type": "http.request", "body": b"", "more_body": False}
@@ -428,7 +444,11 @@ async def call(app, method="GET", path="/x", sent=None):
         if sent is not None:
             sent.append(message)
 
-    await app({"type": "http", "method": method, "path": path, "query_string": b""}, receive, send)
+    await app(
+        {"type": "http", "method": method, "path": path, "query_string": b""},
+        receive,
+        send,
+    )
 
 
 def answered_ids(sent):
@@ -444,7 +464,9 @@ def answered_ids(sent):
 
 def test_a_request_leaves_exactly_one_event(recorded):
     """Verify that a request leaves exactly one event."""
-    asyncio.run(call(RequestLogMiddleware(build_app([(Module.DATABASE, "user.get_user")]))))
+    asyncio.run(
+        call(RequestLogMiddleware(build_app([(Module.DATABASE, "user.get_user")])))
+    )
 
     assert len(recorded) == 1
 
@@ -502,6 +524,7 @@ def test_a_request_that_crashed_is_tracked_as_a_server_error(recorded):
 
 def test_a_lifespan_message_is_not_a_request_and_leaves_no_row(recorded):
     """Verify that a lifespan message is not a request and leaves no row."""
+
     async def app(scope, receive, send):
         """Serve the simulated ASGI response used by the test."""
         return None
@@ -513,6 +536,7 @@ def test_a_lifespan_message_is_not_a_request_and_leaves_no_row(recorded):
 
 def test_a_sink_that_fails_does_not_fail_the_request(capsys):
     """Verify that a sink that fails does not fail the request."""
+
     def explode(event):
         """Raise the configured failure to exercise error handling."""
         raise RuntimeError("connection refused")

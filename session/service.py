@@ -2,14 +2,12 @@
 
 from datetime import datetime
 
+from session.constants import SESSION_NAME_MAX_LENGTH
 from session.entity import Session, Message, SendMessageResult
 from session.session import GuardrailRejectedError, IService
 from internal.shared import current_id_request, record_aeko_metrics
 
 from user.user import IRepository as IUserRepository
-
-
-SESSION_NAME_MAX_LENGTH = 60
 
 
 def _metric_company(user) -> int:
@@ -22,6 +20,7 @@ def _metric_company(user) -> int:
 
 class Service(IService):
     def __init__(self, repository, cache_repository=None, inactivity_minutes=20):
+        """Bind session persistence, cache, and user collaborators."""
         self.repository = repository
         self.cache_repository = cache_repository
         self.inactivity_minutes = inactivity_minutes
@@ -79,7 +78,11 @@ class Service(IService):
             messenger = aeko_messenger_factory(user, memories)
 
             response = _run(
-                messenger, input, aeko_session_factory(session), current_id_request(), user
+                messenger,
+                input,
+                aeko_session_factory(session),
+                current_id_request(),
+                user,
             )
 
             record_aeko_metrics(
@@ -104,23 +107,32 @@ class Service(IService):
             raise RuntimeError(f"Error sending message: {e}")
 
     def _conversation_messages(self, id_session: str) -> list[Message]:
+        """Return cached window messages, or load them from storage."""
         if self.cache_repository is not None:
             window = self.cache_repository.get_window(id_session)
             if window is not None and window.messages:
                 return list(window.messages)
         return self.repository.get_session_messages(id_session)
 
-    def _refresh_window(self, id_session: str, id_user: str, history: list[Message], message: Message) -> None:
+    def _refresh_window(
+        self, id_session: str, id_user: str, history: list[Message], message: Message
+    ) -> None:
+        """Update the cached window and activity after a new message."""
         if self.cache_repository is None:
             return
         self.cache_repository.set_window(id_session, id_user, list(history) + [message])
         self.cache_repository.set_activity(id_session, self.inactivity_minutes * 60)
 
-    def _validate_session_and_user_allowance(self, id_session: str, id_user: str) -> bool:
+    def _validate_session_and_user_allowance(
+        self, id_session: str, id_user: str
+    ) -> bool:
+        """Reject oversized sessions and users who do not own them."""
         try:
             messages_amount = self.repository.get_session_messages_count(id_session)
             if messages_amount >= 50:
-                raise ValueError("Session has reached the maximum number of messages allowed.")
+                raise ValueError(
+                    "Session has reached the maximum number of messages allowed."
+                )
 
             session = self.repository.get_session(id_session)
             if session.id_user != id_user:
@@ -130,6 +142,7 @@ class Service(IService):
             raise e
         except Exception as e:
             raise RuntimeError(f"Error validating session and user allowance: {e}")
+
 
 def _run(messenger, input: str, session, id_request: str, user):
     """Send a conversation turn and record metrics attached to any raised exception."""
@@ -150,10 +163,12 @@ def _internal_message_from_aeko_message(message) -> Message:
     return Message(
         input=message.input,
         output=message.output,
-        submitted_at=getattr(message, "submitted_at", None) or datetime.utcnow()
+        submitted_at=getattr(message, "submitted_at", None) or datetime.utcnow(),
     )
 
+
 def _session_name_from(input: str) -> str:
+    """Build a display name from the first user message."""
     name = " ".join(input.split())
     if len(name) <= SESSION_NAME_MAX_LENGTH:
         return name

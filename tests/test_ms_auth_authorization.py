@@ -17,7 +17,9 @@ from user.entity import User
 
 def principal(id_external_user=1, id_external_company=90):
     """Build a minimal ms-auth principal for authorization unit tests."""
-    return MsAuthPrincipal("token", id_external_user, id_external_company, {"id": id_external_user})
+    return MsAuthPrincipal(
+        "token", id_external_user, id_external_company, {"id": id_external_user}
+    )
 
 
 class StubUserRepository:
@@ -57,7 +59,9 @@ def test_ensure_internal_user_rejects_foreign_user():
 
 def test_ensure_plan_belongs_to_principal_rejects_foreign_company():
     """Verify that ensure_plan_belongs_to_principal hides another company's plan as not found."""
-    plan = ImprovementPlan(id_external_company=91, defined_problem="p", method="m", reasoning="r")
+    plan = ImprovementPlan(
+        id_external_company=91, defined_problem="p", method="m", reasoning="r"
+    )
     with pytest.raises(HTTPException) as exc:
         ensure_plan_belongs_to_principal(principal(id_external_company=90), plan)
     assert exc.value.status_code == 404
@@ -66,5 +70,7 @@ def test_ensure_plan_belongs_to_principal_rejects_foreign_company():
 
 def test_ensure_plan_belongs_to_principal_allows_matching_company():
     """Verify that ensure_plan_belongs_to_principal accepts a plan for the token company."""
-    plan = ImprovementPlan(id_external_company=90, defined_problem="p", method="m", reasoning="r")
+    plan = ImprovementPlan(
+        id_external_company=90, defined_problem="p", method="m", reasoning="r"
+    )
     ensure_plan_belongs_to_principal(principal(id_external_company=90), plan)

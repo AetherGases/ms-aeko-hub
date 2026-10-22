@@ -170,7 +170,9 @@ def build_client(service, redis=None):
 
 def test_authorization_server_metadata(oauth_env):
     """Verify that authorization-server metadata advertises PKCE S256 and the authorize/token paths."""
-    response = build_client(StubOAuthService()).get("/.well-known/oauth-authorization-server")
+    response = build_client(StubOAuthService()).get(
+        "/.well-known/oauth-authorization-server"
+    )
     body = response.json()
     assert response.status_code == 200
     assert body["issuer"] == ISSUER
@@ -186,7 +188,9 @@ def test_authorization_server_metadata(oauth_env):
 
 def test_protected_resource_metadata(oauth_env):
     """Verify that protected-resource metadata names this API as the MCP resource."""
-    response = build_client(StubOAuthService()).get("/.well-known/oauth-protected-resource")
+    response = build_client(StubOAuthService()).get(
+        "/.well-known/oauth-protected-resource"
+    )
     body = response.json()
     assert response.status_code == 200
     assert body["resource"] == AUDIENCE

@@ -28,7 +28,9 @@ class RecordingRequest:
     """Captures every call `requests.request` would have made."""
 
     def __init__(self, response=None, error=None):
-        self.response = response if response is not None else FakeResponse(payload={"ok": True})
+        self.response = (
+            response if response is not None else FakeResponse(payload={"ok": True})
+        )
         self.error = error
         self.calls = []
 
@@ -42,7 +44,7 @@ class RecordingRequest:
 @pytest.fixture
 def api_key_env(monkeypatch):
     """Set a test Climatiq API key."""
-    monkeypatch.setenv('CLIMATIQ_API_KEY', "key-from-env")
+    monkeypatch.setenv("CLIMATIQ_API_KEY", "key-from-env")
 
 
 @pytest.fixture
@@ -66,17 +68,19 @@ def test_api_key_prefers_the_value_it_is_given(api_key_env):
 @pytest.mark.parametrize("value", ["", None])
 def test_api_key_raises_naming_the_missing_variable(monkeypatch, value):
     """Verify that api key raises naming the missing variable."""
-    monkeypatch.delenv('CLIMATIQ_API_KEY', raising=False)
+    monkeypatch.delenv("CLIMATIQ_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError) as error:
         climatiq_api._api_key(value)
 
-    assert 'CLIMATIQ_API_KEY' in str(error.value)
+    assert "CLIMATIQ_API_KEY" in str(error.value)
 
 
 def test_request_sends_query_parameters_on_a_get(recorded_request):
     """Verify that request sends query parameters on a get."""
-    climatiq_api._request("GET", climatiq_api.CLIMATIQ_SEARCH_URL, params={"query": "cement"})
+    climatiq_api._request(
+        "GET", climatiq_api.CLIMATIQ_SEARCH_URL, params={"query": "cement"}
+    )
 
     call = recorded_request.calls[0]
     assert call["method"] == "GET"
@@ -86,7 +90,9 @@ def test_request_sends_query_parameters_on_a_get(recorded_request):
 
 def test_request_sends_a_json_body_on_a_post(recorded_request):
     """Verify that request sends a json body on a post."""
-    climatiq_api._request("POST", climatiq_api.CLIMATIQ_ESTIMATE_URL, json={"parameters": {}})
+    climatiq_api._request(
+        "POST", climatiq_api.CLIMATIQ_ESTIMATE_URL, json={"parameters": {}}
+    )
 
     call = recorded_request.calls[0]
     assert call["method"] == "POST"
@@ -97,7 +103,9 @@ def test_request_authenticates_with_a_bearer_token(recorded_request):
     """Verify that request authenticates with a bearer token."""
     climatiq_api._request("GET", climatiq_api.CLIMATIQ_SEARCH_URL)
 
-    assert recorded_request.calls[0]["headers"]["Authorization"] == "Bearer key-from-env"
+    assert (
+        recorded_request.calls[0]["headers"]["Authorization"] == "Bearer key-from-env"
+    )
 
 
 def test_request_never_waits_forever(recorded_request):
@@ -115,7 +123,9 @@ def test_request_returns_the_parsed_body(monkeypatch, api_key_env):
         RecordingRequest(FakeResponse(payload={"co2e": 12.5})),
     )
 
-    assert climatiq_api._request("POST", climatiq_api.CLIMATIQ_ESTIMATE_URL) == {"co2e": 12.5}
+    assert climatiq_api._request("POST", climatiq_api.CLIMATIQ_ESTIMATE_URL) == {
+        "co2e": 12.5
+    }
 
 
 def test_request_raises_carrying_what_the_api_said_about_a_rejected_request(
@@ -201,7 +211,9 @@ def test_parse_estimate_request_accepts_a_json_object_string():
         ' "parameters": {"weight": 100, "weight_unit": "t"}}'
     )
 
-    assert parsed["emission_factor"]["activity_id"] == "metals-type_basic_iron_and_steel"
+    assert (
+        parsed["emission_factor"]["activity_id"] == "metals-type_basic_iron_and_steel"
+    )
     assert parsed["parameters"] == {"weight": 100, "weight_unit": "t"}
 
 
@@ -220,7 +232,9 @@ def test_parse_estimate_request_pins_the_data_version():
         {"activity_id": "steel", "parameters": {"money": 1}}
     )
 
-    assert parsed["emission_factor"]["data_version"] == climatiq_api.CLIMATIQ_DATA_VERSION
+    assert (
+        parsed["emission_factor"]["data_version"] == climatiq_api.CLIMATIQ_DATA_VERSION
+    )
 
 
 def test_parse_estimate_request_puts_the_selector_filters_with_the_factor():
@@ -259,7 +273,11 @@ def test_parse_estimate_request_rejects_a_field_climatiq_does_not_take():
     """Verify that parse estimate request rejects a field climatiq does not take."""
     with pytest.raises(ValueError) as error:
         climatiq_api._parse_estimate_request(
-            {"activity_id": "steel", "parameters": {"money": 1}, "collection": "improvement_plan"}
+            {
+                "activity_id": "steel",
+                "parameters": {"money": 1},
+                "collection": "improvement_plan",
+            }
         )
 
     assert "collection" in str(error.value)
@@ -319,7 +337,9 @@ def test_parse_estimate_request_rejects_anything_that_is_not_an_object(request_i
     assert repr(request_input) in str(error.value)
 
 
-def test_climatiq_search_gets_the_search_endpoint_with_the_agents_words(recorded_request):
+def test_climatiq_search_gets_the_search_endpoint_with_the_agents_words(
+    recorded_request,
+):
     """Verify that climatiq search gets the search endpoint with the agents words."""
     climatiq_api._climatiq_search("cimento portland")
 
@@ -333,7 +353,10 @@ def test_climatiq_search_pins_the_data_version(recorded_request):
     """Verify that climatiq search pins the data version."""
     climatiq_api._climatiq_search("cimento portland")
 
-    assert recorded_request.calls[0]["params"]["data_version"] == climatiq_api.CLIMATIQ_DATA_VERSION
+    assert (
+        recorded_request.calls[0]["params"]["data_version"]
+        == climatiq_api.CLIMATIQ_DATA_VERSION
+    )
 
 
 def test_climatiq_search_bounds_how_many_factors_come_back(recorded_request):
@@ -364,7 +387,9 @@ def test_climatiq_search_never_reaches_the_api_with_an_empty_query(recorded_requ
     assert recorded_request.calls == []
 
 
-def test_climatiq_estimate_posts_the_selector_to_the_estimate_endpoint(recorded_request):
+def test_climatiq_estimate_posts_the_selector_to_the_estimate_endpoint(
+    recorded_request,
+):
     """Verify that climatiq estimate posts the selector to the estimate endpoint."""
     climatiq_api._climatiq_estimate(
         '{"activity_id": "metals-type_basic_iron_and_steel",'
@@ -374,7 +399,10 @@ def test_climatiq_estimate_posts_the_selector_to_the_estimate_endpoint(recorded_
     call = recorded_request.calls[0]
     assert call["method"] == "POST"
     assert call["url"] == climatiq_api.CLIMATIQ_ESTIMATE_URL
-    assert call["json"]["emission_factor"]["activity_id"] == "metals-type_basic_iron_and_steel"
+    assert (
+        call["json"]["emission_factor"]["activity_id"]
+        == "metals-type_basic_iron_and_steel"
+    )
     assert call["json"]["parameters"] == {"weight": 100, "weight_unit": "t"}
 
 
@@ -392,7 +420,9 @@ def test_climatiq_estimate_returns_what_climatiq_answered(monkeypatch, api_key_e
     assert result == answer
 
 
-def test_climatiq_estimate_never_reaches_the_api_with_a_malformed_request(recorded_request):
+def test_climatiq_estimate_never_reaches_the_api_with_a_malformed_request(
+    recorded_request,
+):
     """Verify that climatiq estimate never reaches the api with a malformed request."""
     with pytest.raises(ValueError):
         climatiq_api._climatiq_estimate("cimento portland")
@@ -410,10 +440,14 @@ def test_get_climatiq_tools_returns_the_search_and_estimate_tools():
 
 def test_get_climatiq_tools_describes_both_tools_for_the_agent():
     """Verify that get climatiq tools describes both tools for the agent."""
-    descriptions = {tool.name: tool.description for tool in climatiq_api.get_climatiq_tools()}
+    descriptions = {
+        tool.name: tool.description for tool in climatiq_api.get_climatiq_tools()
+    }
 
     assert descriptions["climatiq_search"] == climatiq_api.CLIMATIQ_SEARCH_DESCRIPTION
-    assert descriptions["climatiq_estimate"] == climatiq_api.CLIMATIQ_ESTIMATE_DESCRIPTION
+    assert (
+        descriptions["climatiq_estimate"] == climatiq_api.CLIMATIQ_ESTIMATE_DESCRIPTION
+    )
 
 
 def test_get_climatiq_tools_entries_are_backed_by_the_climatiq_calls(recorded_request):
@@ -421,7 +455,9 @@ def test_get_climatiq_tools_entries_are_backed_by_the_climatiq_calls(recorded_re
     search, estimate = climatiq_api.get_climatiq_tools()
 
     search.func("steel")
-    estimate.func('{"activity_id": "steel", "parameters": {"money": 1, "money_unit": "usd"}}')
+    estimate.func(
+        '{"activity_id": "steel", "parameters": {"money": 1, "money_unit": "usd"}}'
+    )
 
     assert [call["url"] for call in recorded_request.calls] == [
         climatiq_api.CLIMATIQ_SEARCH_URL,

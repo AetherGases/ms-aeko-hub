@@ -22,13 +22,14 @@ from session.cache.repository import Repository as CacheRepository
 from session.service import Service
 from session.session import GuardrailRejectedError, IService
 
-from cmd.memory_generator_worker.constants import REDIS_SCAN_COUNT, SESSION_INACTIVITY_MINUTES
+from cmd.memory_generator_worker.constants import (
+    REDIS_SCAN_COUNT,
+    SESSION_INACTIVITY_MINUTES,
+)
+from internal.http.constants import MESSAGE_INPUT_MAX_LENGTH, UNEXPECTED_SERVER_ERROR
 from internal.shared import Module, log_failure
 from user.database.repository import Repository as UserRepository
 from user.service import Service as UserService
-
-MESSAGE_INPUT_MAX_LENGTH = 8192
-UNEXPECTED_SERVER_ERROR = "Unexpected server error."
 
 router = APIRouter(tags=["Sessions"], dependencies=[Depends(require_ms_auth_principal)])
 
@@ -72,37 +73,85 @@ def _internal_server_error(exc: Exception, operation_name: str) -> HTTPException
 
 
 class SessionResponseData(BaseModel):
-    id: str = Field(..., description="Internal session identifier.", json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"})
-    name: str = Field(..., description="Human-readable session name.", json_schema_extra={"example": "Weekly emissions review"})
+    id: str = Field(
+        ...,
+        description="Internal session identifier.",
+        json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"},
+    )
+    name: str = Field(
+        ...,
+        description="Human-readable session name.",
+        json_schema_extra={"example": "Weekly emissions review"},
+    )
 
     model_config = ConfigDict(frozen=True)
 
+
 class MessageResponseData(BaseModel):
-    input_message: str = Field(..., description="Input text sent to the AI agent.", json_schema_extra={"example": "Summarize this session."})
-    output_message: str = Field(..., description="Output returned by the AI agent.", json_schema_extra={"example": "Here is the summary."})
-    submitted_at: datetime = Field(..., description="Timestamp when the message was submitted.", json_schema_extra={"example": "2026-07-26T14:30:00Z"})
+    input_message: str = Field(
+        ...,
+        description="Input text sent to the AI agent.",
+        json_schema_extra={"example": "Summarize this session."},
+    )
+    output_message: str = Field(
+        ...,
+        description="Output returned by the AI agent.",
+        json_schema_extra={"example": "Here is the summary."},
+    )
+    submitted_at: datetime = Field(
+        ...,
+        description="Timestamp when the message was submitted.",
+        json_schema_extra={"example": "2026-07-26T14:30:00Z"},
+    )
 
     model_config = ConfigDict(frozen=True)
 
 
 class SendMessageResponseData(MessageResponseData):
-    id_session: str = Field(..., description="Internal session identifier of the conversation turn.", json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"})
-    session_name: str = Field(..., description="Human-readable session name after the turn was stored.", json_schema_extra={"example": "Weekly emissions review"})
+    id_session: str = Field(
+        ...,
+        description="Internal session identifier of the conversation turn.",
+        json_schema_extra={"example": "65a8b3d6c0f8e1d7f4b2c001"},
+    )
+    session_name: str = Field(
+        ...,
+        description="Human-readable session name after the turn was stored.",
+        json_schema_extra={"example": "Weekly emissions review"},
+    )
 
 
 class UserCostResponseData(BaseModel):
-    id_external_user: int = Field(..., description="External user identifier whose runs were billed.", json_schema_extra={"example": 12345})
-    cost_usd: float = Field(..., description="USD spent by this user in the requested window.", json_schema_extra={"example": 0.25})
+    id_external_user: int = Field(
+        ...,
+        description="External user identifier whose runs were billed.",
+        json_schema_extra={"example": 12345},
+    )
+    cost_usd: float = Field(
+        ...,
+        description="USD spent by this user in the requested window.",
+        json_schema_extra={"example": 0.25},
+    )
 
     model_config = ConfigDict(frozen=True)
 
 
 class CompanyCostResponseData(BaseModel):
-    id_external_company: int = Field(..., description="External company identifier snapshotted on the billed runs.", json_schema_extra={"example": 90})
-    cost_usd: float = Field(..., description="USD spent by every user of this company in the requested window.", json_schema_extra={"example": 0.45})
-    users: list[UserCostResponseData] = Field(..., description="Per-user USD totals inside the same window.")
+    id_external_company: int = Field(
+        ...,
+        description="External company identifier snapshotted on the billed runs.",
+        json_schema_extra={"example": 90},
+    )
+    cost_usd: float = Field(
+        ...,
+        description="USD spent by every user of this company in the requested window.",
+        json_schema_extra={"example": 0.45},
+    )
+    users: list[UserCostResponseData] = Field(
+        ..., description="Per-user USD totals inside the same window."
+    )
 
     model_config = ConfigDict(frozen=True)
+
 
 def get_session_service(request: Request) -> IService:
     """Build the session service from the application database and cache, or raise HTTP 503."""
@@ -172,8 +221,14 @@ def get_aeko_metrics_service(request: Request) -> IAekoMetricsService:
 )
 def get_company_cost(
     principal: MsAuth,
-    n: int = Query(..., description="Number of trailing days to include.", examples=[7]),
-    id_external_company: int = Query(..., description="External company identifier snapshotted on billed runs.", examples=[90]),
+    n: int = Query(
+        ..., description="Number of trailing days to include.", examples=[7]
+    ),
+    id_external_company: int = Query(
+        ...,
+        description="External company identifier snapshotted on billed runs.",
+        examples=[90],
+    ),
     service: IAekoMetricsService = Depends(get_aeko_metrics_service),
 ) -> CompanyCostResponseData:
     """Return USD spent by a company's users over the trailing n days."""
@@ -224,7 +279,9 @@ def get_company_cost(
 )
 def get_user_sessions(
     principal: MsAuth,
-    id_external_user: int = Path(..., description="External user identifier.", examples=[12345]),
+    id_external_user: int = Path(
+        ..., description="External user identifier.", examples=[12345]
+    ),
     service: IService = Depends(get_session_service),
     user_repository: UserRepository = Depends(get_user_repository),
 ) -> list[SessionResponseData]:
@@ -233,11 +290,15 @@ def get_user_sessions(
     try:
         user = user_repository.get_user(id_external_user)
         sessions = service.get_user_sessions(user.id)
-        return [SessionResponseData(id=session.id, name=session.name) for session in sessions]
+        return [
+            SessionResponseData(id=session.id, name=session.name)
+            for session in sessions
+        ]
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise _internal_server_error(exc, "Error retrieving user sessions") from exc
+
 
 @router.get(
     "/ai/session/{id_session}/messages",
@@ -266,7 +327,11 @@ def get_user_sessions(
 )
 def get_session_messages(
     principal: MsAuth,
-    id_session: str = Path(..., description="Internal session identifier.", examples=["65a8b3d6c0f8e1d7f4b2c001"]),
+    id_session: str = Path(
+        ...,
+        description="Internal session identifier.",
+        examples=["65a8b3d6c0f8e1d7f4b2c001"],
+    ),
     service: IService = Depends(get_session_service),
     session_repository: SessionRepository = Depends(get_session_repository),
     user_repository: UserRepository = Depends(get_user_repository),
@@ -285,7 +350,7 @@ def get_session_messages(
             MessageResponseData(
                 input_message=message.input,
                 output_message=message.output,
-                submitted_at=message.submitted_at
+                submitted_at=message.submitted_at,
             )
             for message in messages
         ]
@@ -293,6 +358,7 @@ def get_session_messages(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise _internal_server_error(exc, "Error retrieving session messages") from exc
+
 
 @router.post(
     "/ai/user/session/message",
@@ -315,9 +381,15 @@ def get_session_messages(
                 }
             },
         },
-        400: {"description": "The request body is missing required fields or is invalid."},
-        422: {"description": "Neither the output guardrail nor the response checker approved a draft, so the run produced no answer."},
-        500: {"description": "The Aeko SDK is not initialized or an unexpected error occurred."},
+        400: {
+            "description": "The request body is missing required fields or is invalid."
+        },
+        422: {
+            "description": "Neither the output guardrail nor the response checker approved a draft, so the run produced no answer."
+        },
+        500: {
+            "description": "The Aeko SDK is not initialized or an unexpected error occurred."
+        },
     },
     openapi_extra={
         "requestBody": {
@@ -374,7 +446,9 @@ async def send_message(
         if id_session is not None and not isinstance(id_session, str):
             raise ValueError("id_session must be a string.")
         input = _bounded_message_input(body.get("input", ""))
-        id_external_user = _positive_external_id(body.get("id_external_user"), "id_external_user")
+        id_external_user = _positive_external_id(
+            body.get("id_external_user"), "id_external_user"
+        )
         id_external_company = _positive_external_id(
             body.get("id_external_company"),
             "id_external_company",

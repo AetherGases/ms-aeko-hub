@@ -36,9 +36,12 @@ def error_detail(response: Any) -> str:
     if not isinstance(body, dict):
         return response.text.strip()
 
-    return " - ".join(
-        str(body[field]) for field in ("error_code", "message") if field in body
-    ) or response.text.strip()
+    return (
+        " - ".join(
+            str(body[field]) for field in ("error_code", "message") if field in body
+        )
+        or response.text.strip()
+    )
 
 
 def request_json(

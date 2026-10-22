@@ -7,14 +7,11 @@ from fastapi.testclient import TestClient
 from cmd.api.integrations.cloudinary_api import CloudinaryError
 from internal.http import upload_ticket_handlers
 from tests.ms_auth_doubles import override_ms_auth
-from upload_ticket.entity import STATE_UPLOADED, UploadTicket
+from upload_ticket.constants import STATE_UPLOADED
+from upload_ticket.entity import UploadTicket
 
-SIGNATURE_ROUTE = (
-    "/ai/user/{id_external_user}/inventory-upload/{ticket}/signature"
-)
-COMPLETE_ROUTE = (
-    "/ai/user/{id_external_user}/inventory-upload/{ticket}/complete"
-)
+SIGNATURE_ROUTE = "/ai/user/{id_external_user}/inventory-upload/{ticket}/signature"
+COMPLETE_ROUTE = "/ai/user/{id_external_user}/inventory-upload/{ticket}/complete"
 
 SIGNATURE_PAYLOAD = {
     "signature": "a1b2c3d4e5f6",
@@ -53,9 +50,7 @@ class StubUploadTicketService:
 
     def get(self, id_external_user, ticket):
         """Return or raise the scripted ticket lookup result."""
-        self.get_calls.append(
-            {"id_external_user": id_external_user, "ticket": ticket}
-        )
+        self.get_calls.append({"id_external_user": id_external_user, "ticket": ticket})
         if self.get_error is not None:
             raise self.get_error
         return self.get_result
@@ -102,7 +97,9 @@ def build_client(service=None, redis="fake-redis"):
     app.state.redis = redis
     override_ms_auth(app)
     if service is not None:
-        app.dependency_overrides[upload_ticket_handlers.get_ticket_service] = lambda: service
+        app.dependency_overrides[upload_ticket_handlers.get_ticket_service] = lambda: (
+            service
+        )
     return TestClient(app)
 
 
@@ -153,9 +150,7 @@ def test_get_signature_returns_cloudinary_fields():
 
 def test_get_signature_for_another_user_returns_403_without_calling_signature_for():
     """Verify that get signature for another user returns 403 without calling signature_for."""
-    service = StubUploadTicketService(
-        get_error=ValueError("Upload ticket not found.")
-    )
+    service = StubUploadTicketService(get_error=ValueError("Upload ticket not found."))
     response = build_client(service).get(
         SIGNATURE_ROUTE.format(id_external_user=OTHER_USER_ID, ticket=TICKET_ID)
     )
@@ -200,9 +195,7 @@ def test_get_signature_maps_non_not_found_value_error_to_400():
 
 def test_get_signature_for_consumed_ticket_maps_not_found_to_404():
     """Verify that the production consumed-ticket error maps to 404."""
-    service = StubUploadTicketService(
-        get_error=ValueError("Upload ticket not found.")
-    )
+    service = StubUploadTicketService(get_error=ValueError("Upload ticket not found."))
     response = build_client(service).get(
         SIGNATURE_ROUTE.format(id_external_user=USER_ID, ticket=TICKET_ID)
     )

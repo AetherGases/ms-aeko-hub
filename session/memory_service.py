@@ -21,6 +21,7 @@ class Service:
         memory_field: str,
         aeko_id_request: str | None = None,
     ):
+        """Bind repositories used to harvest inactive session windows."""
         self.session_repository = session_repository
         self.cache_repository = cache_repository
         self.user_service = user_service
@@ -35,6 +36,7 @@ class Service:
         self._sync_recent_sessions()
 
     def _harvest_expired_windows(self) -> None:
+        """Generate memories from expired conversation windows."""
         for id_session in self.cache_repository.list_expired_windows():
             window = self.cache_repository.get_window(id_session)
             if window is None or not window.messages:
@@ -53,6 +55,7 @@ class Service:
             self.cache_repository.delete_window(id_session)
 
     def _sync_recent_sessions(self) -> None:
+        """Refresh activity for sessions that still have a live window."""
         since = datetime.utcnow() - timedelta(minutes=self.inactivity_minutes)
         sessions = self.session_repository.get_sessions_updated_since(since)
         for session in sessions:
@@ -61,19 +64,27 @@ class Service:
             if not window_messages:
                 continue
 
-            self.cache_repository.set_window(session.id, session.id_user, window_messages)
-            self.cache_repository.set_activity(session.id, self._activity_ttl(session.updated_at))
+            self.cache_repository.set_window(
+                session.id, session.id_user, window_messages
+            )
+            self.cache_repository.set_activity(
+                session.id, self._activity_ttl(session.updated_at)
+            )
 
     def _activity_ttl(self, updated_at: datetime | None) -> int:
+        """Return the inactivity TTL applied to session activity keys."""
         reference = updated_at or datetime.utcnow()
         elapsed = (datetime.utcnow() - reference).total_seconds()
         remaining = self.inactivity_minutes * 60 - elapsed
         return max(1, int(remaining))
 
     def _generate_summary(self, messages) -> str:
+        """Ask the SDK to summarize a conversation window into memories."""
         id_request = self.aeko_id_request or new_id_request()
         try:
-            response = self.summary_generator.generate_summary(messages, id_request=id_request)
+            response = self.summary_generator.generate_summary(
+                messages, id_request=id_request
+            )
         except Exception as exc:
             record_aeko_metrics(getattr(exc, "aeko_metrics", None))
             raise

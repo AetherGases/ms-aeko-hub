@@ -9,7 +9,9 @@ from upload_ticket.constants import INVENTORY_UPLOAD_TICKET_TTL_SECONDS
 from upload_ticket.service import Service
 
 CLOUDINARY_PATH = "https://res.cloudinary.com/meu-cloud/raw/upload/v1/uploads/file.xlsx"
-CLOUDINARY_PATH_TWO = "https://res.cloudinary.com/meu-cloud/raw/upload/v1/uploads/file2.xlsx"
+CLOUDINARY_PATH_TWO = (
+    "https://res.cloudinary.com/meu-cloud/raw/upload/v1/uploads/file2.xlsx"
+)
 
 
 class ListRedis(FakeRedis):
@@ -159,7 +161,9 @@ def test_confirm_path_rejects_arbitrary_path(service):
     with pytest.raises(ValueError, match="path"):
         service.confirm_path(42, created.ticket, "http://127.0.0.1/latest/meta-data/")
     with pytest.raises(ValueError, match="path"):
-        service.confirm_path(42, created.ticket, "https://inventory.test/api/inventories")
+        service.confirm_path(
+            42, created.ticket, "https://inventory.test/api/inventories"
+        )
     with pytest.raises(ValueError, match="path"):
         service.confirm_path(42, created.ticket, "/internal/uploads/file.xlsx")
 
@@ -227,3 +231,13 @@ def test_append_created_id_sets_ttl(repository, redis):
 
     assert repository.get_created_ids(42) == [501, 502]
     assert redis.expirations[key] == INVENTORY_UPLOAD_TICKET_TTL_SECONDS
+
+
+def test_upload_ticket_states_are_not_reexported_from_entity():
+    """Keep ticket states on constants so unused-import cleanup cannot drop state checks."""
+    import upload_ticket.entity as entity
+
+    assert not hasattr(entity, "STATE_UPLOADED")
+    assert not hasattr(entity, "STATE_CONSUMED")
+    assert not hasattr(entity, "STATE_WAITING_FOR_UPLOAD")
+    assert not hasattr(entity, "VALID_FILE_TYPES")

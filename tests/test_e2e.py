@@ -23,6 +23,7 @@ class AuthTestClient(TestClient):
         kwargs["headers"] = headers
         return super().request(method, url, **kwargs)
 
+
 from improvement_plan.entity import ImprovementPlan
 from improvement_plan.service import Service as ImprovementPlanService
 from internal.http import improvement_plan_handlers, session_handlers, user_handlers
@@ -37,7 +38,9 @@ SUBMITTED_AT = datetime(2026, 7, 26, 14, 30, 0)
 
 ID_INVENTORY = 502
 ID_EXTERNAL_USER = 12345
-INVENTORY_MARKDOWN = "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+INVENTORY_MARKDOWN = (
+    "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+)
 
 REPORT_BODY = {
     "id_external_context_inventory": ID_INVENTORY,
@@ -89,7 +92,9 @@ class InMemoryUserRepository:
         """Retrieve a user by external identifier."""
         user = self.users.get(id_external_user)
         if user is None:
-            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            raise ValueError(
+                f"User with id_external_user {id_external_user} not found."
+            )
         return user
 
     def create_user(self, id_external_user, role, usecase, *, id_external_company=None):
@@ -160,7 +165,9 @@ class InMemorySessionRepository:
     def create_session(self, id_user, user_repository):
         """Create an empty session for an existing user and return its identifier."""
         id_session = f"session-{len(self.sessions) + 1}"
-        self.sessions[id_session] = Session(id=id_session, id_user=id_user, name="", messages=[])
+        self.sessions[id_session] = Session(
+            id=id_session, id_user=id_user, name="", messages=[]
+        )
         return id_session
 
     def save_message(self, id_session, message):
@@ -180,10 +187,13 @@ class InMemoryImprovementPlanRepository:
     def get_by_id_external_inventory(self, id_external_inventory):
         """Retrieve the improvement plan associated with an external inventory identifier."""
         plan = next(
-            (p for p in self.plans if p.id_external_inventory == id_external_inventory), None
+            (p for p in self.plans if p.id_external_inventory == id_external_inventory),
+            None,
         )
         if plan is None:
-            raise ValueError(f"Improvement plan with id_external_inventory {id_external_inventory} not found.")
+            raise ValueError(
+                f"Improvement plan with id_external_inventory {id_external_inventory} not found."
+            )
         return plan
 
     def create(self, improvement_plan):
@@ -198,7 +208,9 @@ class InMemoryImprovementPlanRepository:
         for index, existing in enumerate(self.plans):
             if existing.id_external_inventory == improvement_plan.id_external_inventory:
                 improvement_plan.id = existing.id
-                improvement_plan.updated_at = improvement_plan.updated_at or datetime.utcnow()
+                improvement_plan.updated_at = (
+                    improvement_plan.updated_at or datetime.utcnow()
+                )
                 self.plans[index] = improvement_plan
                 return improvement_plan
         return self.create(improvement_plan)
@@ -214,7 +226,9 @@ def seeded_repositories():
         usecase="report_generation",
         id_external_company=90,
     )
-    session = Session(id="s1", id_user="u1", name="Weekly emissions review", messages=[])
+    session = Session(
+        id="s1", id_user="u1", name="Weekly emissions review", messages=[]
+    )
     message = Message(
         input="Summarize this session.",
         output="Here is the summary.",
@@ -249,10 +263,18 @@ def live_app(api_main, seeded_repositories, monkeypatch):
 
     user_repository, session_repository = seeded_repositories
     app = api_main.app
-    app.dependency_overrides[user_handlers.get_user_service] = lambda: UserService(user_repository)
-    app.dependency_overrides[session_handlers.get_session_service] = lambda: SessionService(session_repository)
-    app.dependency_overrides[session_handlers.get_user_repository] = lambda: user_repository
-    app.dependency_overrides[session_handlers.get_session_repository] = lambda: session_repository
+    app.dependency_overrides[user_handlers.get_user_service] = lambda: UserService(
+        user_repository
+    )
+    app.dependency_overrides[session_handlers.get_session_service] = lambda: (
+        SessionService(session_repository)
+    )
+    app.dependency_overrides[session_handlers.get_user_repository] = lambda: (
+        user_repository
+    )
+    app.dependency_overrides[session_handlers.get_session_repository] = lambda: (
+        session_repository
+    )
 
     monkeypatch.setattr(session_handlers, "UserRepository", lambda db: user_repository)
     monkeypatch.setattr(
@@ -270,18 +292,22 @@ def report_app(live_app, monkeypatch):
     client, api_main, user_repository, _ = live_app
     plan_repository = InMemoryImprovementPlanRepository()
 
-    client.app.dependency_overrides[improvement_plan_handlers.get_improvement_plan_service] = (
-        lambda: ImprovementPlanService(plan_repository)
-    )
+    client.app.dependency_overrides[
+        improvement_plan_handlers.get_improvement_plan_service
+    ] = lambda: ImprovementPlanService(plan_repository)
 
-    monkeypatch.setattr(improvement_plan_handlers, "UserRepository", lambda db: user_repository)
+    monkeypatch.setattr(
+        improvement_plan_handlers, "UserRepository", lambda db: user_repository
+    )
 
     return client, api_main, plan_repository
 
 
 def request_report(client, body=None):
     """Submit a report request to the test application."""
-    return client.post("/ai/report", json=body or REPORT_BODY, headers=INVENTORY_REPORT_AUTH_HEADERS)
+    return client.post(
+        "/ai/report", json=body or REPORT_BODY, headers=INVENTORY_REPORT_AUTH_HEADERS
+    )
 
 
 def get_report(client, id_external_inventory=ID_INVENTORY):
@@ -318,7 +344,9 @@ def test_registered_tool_keys_are_all_known_agents(live_app, fake_sdk):
 
 def test_the_reviewers_are_registered_no_tools(live_app, fake_sdk):
     """Verify that the reviewers are registered no tools."""
-    assert not {"Guardrail de Saída", "Verificador de Resposta"} & set(fake_sdk.RUNTIME.tools)
+    assert not {"Guardrail de Saída", "Verificador de Resposta"} & set(
+        fake_sdk.RUNTIME.tools
+    )
 
 
 def test_lifespan_registers_every_agent_in_a_single_call(live_app, fake_sdk):
@@ -366,7 +394,11 @@ def test_aeko_agents_still_receive_tavily(live_app, fake_sdk):
     """Verify that aeko agents still receive tavily."""
     for agent, tools in fake_sdk.RUNTIME.tools.items():
         names = {tool.name for tool in tools}
-        if "tavily_search" in names or "tavily_research" in names or "tavily_map" in names:
+        if (
+            "tavily_search" in names
+            or "tavily_research" in names
+            or "tavily_map" in names
+        ):
             assert {"tavily_search", "tavily_research", "tavily_map"} & names
             return
     raise AssertionError("no agent received Tavily tools")
@@ -409,12 +441,17 @@ SESSION_TOOL_NAMES = {
 def test_faq_gets_the_site_map_and_user_memory_tools(live_app, fake_sdk):
     """Verify that faq gets the site map and user memory tools."""
     tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools["FAQ"]}
-    assert tool_names == {
-        "tavily_map",
-        "tavily_search",
-        "tavily_research",
-        CALCULATOR_TOOL_NAME,
-    } | USER_MEMORY_TOOL_NAMES | SESSION_TOOL_NAMES
+    assert (
+        tool_names
+        == {
+            "tavily_map",
+            "tavily_search",
+            "tavily_research",
+            CALCULATOR_TOOL_NAME,
+        }
+        | USER_MEMORY_TOOL_NAMES
+        | SESSION_TOOL_NAMES
+    )
 
 
 def test_faq_does_not_get_plan_problem_search(live_app, fake_sdk):
@@ -431,11 +468,18 @@ def test_continuous_improvement_coordinator_also_gets_the_roi_tools(live_app, fa
     tool_names = {
         tool.name for tool in fake_sdk.RUNTIME.tools["Coordenador de Melhoria Contínua"]
     }
-    assert tool_names == {
-        "tavily_search",
-        "tavily_research",
-        CALCULATOR_TOOL_NAME,
-    } | IMPROVEMENT_PLAN_TOOL_NAMES | USER_MEMORY_TOOL_NAMES | SESSION_TOOL_NAMES | ROI_TOOL_NAMES
+    assert (
+        tool_names
+        == {
+            "tavily_search",
+            "tavily_research",
+            CALCULATOR_TOOL_NAME,
+        }
+        | IMPROVEMENT_PLAN_TOOL_NAMES
+        | USER_MEMORY_TOOL_NAMES
+        | SESSION_TOOL_NAMES
+        | ROI_TOOL_NAMES
+    )
 
 
 @pytest.mark.parametrize(
@@ -450,13 +494,21 @@ def test_no_other_agent_can_reach_the_roi_tools(live_app, fake_sdk, agent):
 
 def test_green_gas_analyst_also_gets_the_chroma_vector_search(live_app, fake_sdk):
     """Verify that green gas analyst also gets the chroma vector search."""
-    tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools["Analista de Gases Verdes"]}
-    assert tool_names == {
-        "tavily_search",
-        "tavily_research",
-        "query_gases_info",
-        CALCULATOR_TOOL_NAME,
-    } | IMPROVEMENT_PLAN_TOOL_NAMES | USER_MEMORY_TOOL_NAMES | SESSION_TOOL_NAMES
+    tool_names = {
+        tool.name for tool in fake_sdk.RUNTIME.tools["Analista de Gases Verdes"]
+    }
+    assert (
+        tool_names
+        == {
+            "tavily_search",
+            "tavily_research",
+            "query_gases_info",
+            CALCULATOR_TOOL_NAME,
+        }
+        | IMPROVEMENT_PLAN_TOOL_NAMES
+        | USER_MEMORY_TOOL_NAMES
+        | SESSION_TOOL_NAMES
+    )
 
 
 @pytest.mark.parametrize(
@@ -475,11 +527,18 @@ CLIMATIQ_TOOL_NAMES = {"climatiq_search", "climatiq_estimate"}
 def test_pollutant_analyst_also_gets_the_climatiq_calculator(live_app, fake_sdk):
     """Verify that pollutant analyst also gets the climatiq calculator."""
     tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools["Analista de Poluentes"]}
-    assert tool_names == {
-        "tavily_search",
-        "tavily_research",
-        CALCULATOR_TOOL_NAME,
-    } | IMPROVEMENT_PLAN_TOOL_NAMES | USER_MEMORY_TOOL_NAMES | SESSION_TOOL_NAMES | CLIMATIQ_TOOL_NAMES
+    assert (
+        tool_names
+        == {
+            "tavily_search",
+            "tavily_research",
+            CALCULATOR_TOOL_NAME,
+        }
+        | IMPROVEMENT_PLAN_TOOL_NAMES
+        | USER_MEMORY_TOOL_NAMES
+        | SESSION_TOOL_NAMES
+        | CLIMATIQ_TOOL_NAMES
+    )
 
 
 @pytest.mark.parametrize(
@@ -492,15 +551,27 @@ def test_no_other_agent_can_reach_climatiq(live_app, fake_sdk, agent):
     assert tool_names.isdisjoint(CLIMATIQ_TOOL_NAMES)
 
 
-def test_inventory_analyst_gets_no_tavily_tools_but_gets_mongo_tools(live_app, fake_sdk):
+def test_inventory_analyst_gets_no_tavily_tools_but_gets_mongo_tools(
+    live_app, fake_sdk
+):
     """Verify that inventory analyst gets no tavily tools but gets mongo tools."""
-    tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools["Análista de inventários"]}
-    assert tool_names == {CALCULATOR_TOOL_NAME} | IMPROVEMENT_PLAN_TOOL_NAMES | USER_MEMORY_TOOL_NAMES | SESSION_TOOL_NAMES
+    tool_names = {
+        tool.name for tool in fake_sdk.RUNTIME.tools["Análista de inventários"]
+    }
+    assert (
+        tool_names
+        == {CALCULATOR_TOOL_NAME}
+        | IMPROVEMENT_PLAN_TOOL_NAMES
+        | USER_MEMORY_TOOL_NAMES
+        | SESSION_TOOL_NAMES
+    )
 
 
 def test_inventory_analyst_gets_chroma_plan_search(live_app, fake_sdk):
     """Verify that inventory analyst gets chroma plan search."""
-    tool_names = {tool.name for tool in fake_sdk.RUNTIME.tools["Análista de inventários"]}
+    tool_names = {
+        tool.name for tool in fake_sdk.RUNTIME.tools["Análista de inventários"]
+    }
     assert "query_improvement_plan_problems" in tool_names
     assert "search_improvement_plans_by_problem" not in tool_names
 
@@ -561,13 +632,19 @@ def test_lifespan_publishes_sdk_factories_on_app_state(live_app, fake_sdk):
     _, api_main, _, _ = live_app
     state = api_main.app.state._state
 
-    user = User(id="u1", id_external_user=12345, role="analyst", usecase="report_generation")
+    user = User(
+        id="u1", id_external_user=12345, role="analyst", usecase="report_generation"
+    )
     messenger = state["aeko_messenger_factory"](user, [])
-    session = state["aeko_session_factory"](Session(id="s1", id_user="u1", name="n", messages=[]))
+    session = state["aeko_session_factory"](
+        Session(id="s1", id_user="u1", name="n", messages=[])
+    )
 
     assert isinstance(messenger, fake_sdk.AekoMessenger)
     assert isinstance(session, fake_sdk.AekoSession)
-    assert isinstance(state["aeko_inventory_analyzer_factory"](), fake_sdk.AekoInventoryAnalyzer)
+    assert isinstance(
+        state["aeko_inventory_analyzer_factory"](), fake_sdk.AekoInventoryAnalyzer
+    )
 
 
 def test_lifespan_publishes_no_shared_sdk_instance(live_app):
@@ -631,7 +708,9 @@ def printed_within(capsys, needle, timeout=5.0):
     return False
 
 
-def test_lifespan_warms_up_every_mcp_session_and_closes_it_afterwards(api_main, monkeypatch):
+def test_lifespan_warms_up_every_mcp_session_and_closes_it_afterwards(
+    api_main, monkeypatch
+):
     """Verify that lifespan warms up every mcp session and closes it afterwards."""
     sessions = (FakeMCPSession("tavily"), FakeMCPSession("chroma"))
     monkeypatch.setattr(api_main, "MCP_SESSIONS", sessions)
@@ -644,7 +723,9 @@ def test_lifespan_warms_up_every_mcp_session_and_closes_it_afterwards(api_main, 
     assert [session.closed for session in sessions] == [True, True]
 
 
-def test_lifespan_spawns_no_mcp_server_when_warm_up_is_switched_off(api_main, monkeypatch):
+def test_lifespan_spawns_no_mcp_server_when_warm_up_is_switched_off(
+    api_main, monkeypatch
+):
     """Verify that lifespan spawns no mcp server when warm up is switched off."""
     session = FakeMCPSession("chroma")
     monkeypatch.setattr(api_main, "MCP_SESSIONS", (session,))
@@ -657,11 +738,15 @@ def test_lifespan_spawns_no_mcp_server_when_warm_up_is_switched_off(api_main, mo
     assert session.closed is True
 
 
-def test_lifespan_starts_even_when_an_mcp_server_refuses_to(api_main, monkeypatch, capsys):
+def test_lifespan_starts_even_when_an_mcp_server_refuses_to(
+    api_main, monkeypatch, capsys
+):
     """Verify that lifespan starts even when an mcp server refuses to."""
     from tests.test_profile_api import PROFILE_PAYLOAD
 
-    session = FakeMCPSession("chroma", fails_with=RuntimeError("CHROMA_API_KEY is not set."))
+    session = FakeMCPSession(
+        "chroma", fails_with=RuntimeError("CHROMA_API_KEY is not set.")
+    )
     monkeypatch.setattr(api_main, "MCP_SESSIONS", (session,))
     monkeypatch.setattr(api_main, "MCP_WARM_UP", "true")
     monkeypatch.setattr(
@@ -775,7 +860,9 @@ def test_send_message_builds_the_messenger_for_the_asking_user(live_app, fake_sd
     assert messenger.user.usecase == "report_generation"
 
 
-def test_send_message_hands_over_only_the_memories_that_are_still_valid(live_app, fake_sdk):
+def test_send_message_hands_over_only_the_memories_that_are_still_valid(
+    live_app, fake_sdk
+):
     """Verify that send message hands over only the memories that are still valid."""
     client, _, _, _ = live_app
 
@@ -804,7 +891,9 @@ def test_send_message_names_a_brand_new_session_after_its_first_message(live_app
     assert response.status_code == 200
     assert response.json()["id_session"] == "session-2"
     assert response.json()["session_name"] == "How do I cut boiler emissions?"
-    assert session_repository.created_names == {"session-2": "How do I cut boiler emissions?"}
+    assert session_repository.created_names == {
+        "session-2": "How do I cut boiler emissions?"
+    }
 
 
 def test_send_message_returns_422_when_no_reviewer_approved_a_draft(live_app, fake_sdk):
@@ -837,7 +926,9 @@ def test_the_analyzer_reads_the_markdown_from_the_request(report_app, fake_sdk):
     request_report(client)
 
     analyzer = fake_sdk.AekoInventoryAnalyzer.instances[-1]
-    inventory, id_external_inventory, id_request, gases, scopes, categories = analyzer.analyzed[0]
+    inventory, id_external_inventory, id_request, gases, scopes, categories = (
+        analyzer.analyzed[0]
+    )
     assert inventory == INVENTORY_MARKDOWN
     assert id_external_inventory == ID_INVENTORY
     assert id_request
@@ -848,7 +939,9 @@ def test_the_analyzer_reads_the_markdown_from_the_request(report_app, fake_sdk):
     ]
 
 
-def test_the_current_plan_of_the_inventory_becomes_the_analyzers_context(report_app, fake_sdk):
+def test_the_current_plan_of_the_inventory_becomes_the_analyzers_context(
+    report_app, fake_sdk
+):
     """Verify that the current plan of the inventory becomes the analyzers context."""
     client, _, plan_repository = report_app
     plan_repository.plans.append(
@@ -912,7 +1005,9 @@ def test_a_failed_reanalysis_keeps_the_current_plan(report_app, fake_sdk):
         updated_at=datetime(2026, 5, 1),
     )
     plan_repository.plans.append(existing)
-    fake_sdk.AekoInventoryAnalyzer.next_error = fake_sdk.MalformedAgentOutputError("malformed")
+    fake_sdk.AekoInventoryAnalyzer.next_error = fake_sdk.MalformedAgentOutputError(
+        "malformed"
+    )
 
     response = request_report(client)
 

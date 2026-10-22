@@ -6,8 +6,7 @@ from typing import Any
 import requests
 
 from cmd.api.acl.open_ai.identity import current_ms_auth_access_token
-
-CLOUDINARY_UPLOAD_SIGNATURE_PATH = "/api/cloudinary/upload-signature"
+from cmd.api.integrations.constants import CLOUDINARY_UPLOAD_SIGNATURE_PATH
 
 
 class CloudinaryError(RuntimeError):
@@ -51,9 +50,12 @@ def _error_detail(response: Any) -> str:
     if not isinstance(body, dict):
         return response.text.strip()
 
-    return " - ".join(
-        str(body[field]) for field in ("error_code", "message") if field in body
-    ) or response.text.strip()
+    return (
+        " - ".join(
+            str(body[field]) for field in ("error_code", "message") if field in body
+        )
+        or response.text.strip()
+    )
 
 
 def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -> Any:

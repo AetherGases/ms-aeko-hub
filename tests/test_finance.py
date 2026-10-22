@@ -53,7 +53,9 @@ def test_parse_request_rejects_a_field_it_does_not_know_naming_it():
     assert "tax" in str(error.value)
 
 
-@pytest.mark.parametrize("capex", [None, "150", True, [150], float("inf"), float("nan")])
+@pytest.mark.parametrize(
+    "capex", [None, "150", True, [150], float("inf"), float("nan")]
+)
 def test_parse_request_rejects_a_capex_that_is_not_a_real_number(capex):
     """Verify that parse request rejects a capex that is not a real number."""
     with pytest.raises(ValueError) as error:
@@ -105,7 +107,9 @@ def test_parse_request_accepts_a_wacc_of_zero():
 
 def test_parse_request_pads_a_short_list_of_flows_to_the_horizon():
     """Verify that parse request pads a short list of flows to the horizon."""
-    parsed = finance._parse_request(request_without("cash_flows", cash_flows=[125, 156.25]))
+    parsed = finance._parse_request(
+        request_without("cash_flows", cash_flows=[125, 156.25])
+    )
 
     assert len(parsed["cash_flows"]) == finance.ROI_HORIZON_MONTHS
     assert parsed["cash_flows"][:2] == [125, 156.25]
@@ -114,7 +118,9 @@ def test_parse_request_pads_a_short_list_of_flows_to_the_horizon():
 
 def test_parse_request_repeats_a_single_monthly_flow_over_the_horizon():
     """Verify that parse request repeats a single monthly flow over the horizon."""
-    parsed = finance._parse_request(request_without("cash_flows", monthly_cash_flow=5000))
+    parsed = finance._parse_request(
+        request_without("cash_flows", monthly_cash_flow=5000)
+    )
 
     assert parsed["cash_flows"] == [5000] * finance.ROI_HORIZON_MONTHS
 
@@ -130,7 +136,9 @@ def test_parse_request_accepts_a_full_horizon_of_flows():
 
 def test_parse_request_accepts_a_negative_flow():
     """Verify that parse request accepts a negative flow."""
-    parsed = finance._parse_request(request_without("cash_flows", cash_flows=[-500, 125]))
+    parsed = finance._parse_request(
+        request_without("cash_flows", cash_flows=[-500, 125])
+    )
 
     assert parsed["cash_flows"][:2] == [-500, 125]
 
@@ -250,7 +258,9 @@ def test_calculate_roi_reports_a_project_that_does_not_pay_for_itself():
 
 def test_calculate_roi_calls_a_project_viable_when_the_capex_is_matched_exactly():
     """Verify that calculate roi calls a project viable when the capex is matched exactly."""
-    answer = finance._calculate_roi({"capex": 100, "wacc_monthly": 0.25, "cash_flows": [125]})
+    answer = finance._calculate_roi(
+        {"capex": 100, "wacc_monthly": 0.25, "cash_flows": [125]}
+    )
 
     assert answer["vp_total"] == 100.0
     assert answer["roi_percent"] == 0.0

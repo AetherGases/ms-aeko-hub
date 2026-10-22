@@ -120,10 +120,9 @@ def test_ingest_chatgpt_inventory_uploads_bytes_and_hides_path(monkeypatch, serv
     monkeypatch.setattr(
         inventory_tools,
         "upload_signed_file",
-        lambda file_bytes, file_name, payload: uploads.append(
-            (file_bytes, file_name, payload)
-        )
-        or SECURE_URL,
+        lambda file_bytes, file_name, payload: (
+            uploads.append((file_bytes, file_name, payload)) or SECURE_URL
+        ),
     )
 
     result = inventory_tools.ingest_chatgpt_inventory(
@@ -150,7 +149,9 @@ def test_ingest_chatgpt_inventory_uploads_bytes_and_hides_path(monkeypatch, serv
     assert "signature" not in result
 
 
-def test_ingest_chatgpt_inventory_rejects_unknown_file_type_before_ms(monkeypatch, services):
+def test_ingest_chatgpt_inventory_rejects_unknown_file_type_before_ms(
+    monkeypatch, services
+):
     """Verify that ingest chatgpt inventory rejects unknown file type before ms."""
     tickets, create_inventory = services
     called = []
@@ -180,14 +181,22 @@ def test_ingest_chatgpt_inventory_rejects_unknown_file_type_before_ms(monkeypatc
     assert tickets.recorded == []
 
 
-def test_ingest_chatgpt_inventory_does_not_index_when_create_fails(monkeypatch, services):
+def test_ingest_chatgpt_inventory_does_not_index_when_create_fails(
+    monkeypatch, services
+):
     """Verify that ingest chatgpt inventory does not index when create fails."""
     tickets, create_inventory = services
     create_inventory.error = InventoryError("ms-inventory down")
-    monkeypatch.setattr(inventory_tools, "get_upload_signature", lambda file_type: SIGNATURE_PAYLOAD)
-    monkeypatch.setattr(inventory_tools, "upload_signed_file", lambda *args, **kwargs: SECURE_URL)
+    monkeypatch.setattr(
+        inventory_tools, "get_upload_signature", lambda file_type: SIGNATURE_PAYLOAD
+    )
+    monkeypatch.setattr(
+        inventory_tools, "upload_signed_file", lambda *args, **kwargs: SECURE_URL
+    )
 
-    with pytest.raises(RuntimeError, match="Inventory submission failed. Try again later."):
+    with pytest.raises(
+        RuntimeError, match="Inventory submission failed. Try again later."
+    ):
         inventory_tools.ingest_chatgpt_inventory(
             12345,
             "relatório",
@@ -206,7 +215,9 @@ def test_ingest_chatgpt_inventory_does_not_index_when_create_fails(monkeypatch, 
         InventoryError("download_url=https://files.chatgpt.example/tmp"),
     ],
 )
-def test_ingest_chatgpt_inventory_hides_microservice_details(monkeypatch, services, error):
+def test_ingest_chatgpt_inventory_hides_microservice_details(
+    monkeypatch, services, error
+):
     """Verify that ingest chatgpt inventory hides microservice details."""
     tickets, create_inventory = services
     if isinstance(error, CloudinaryError):
@@ -216,8 +227,12 @@ def test_ingest_chatgpt_inventory_hides_microservice_details(monkeypatch, servic
             lambda file_type: (_ for _ in ()).throw(error),
         )
     else:
-        monkeypatch.setattr(inventory_tools, "get_upload_signature", lambda file_type: SIGNATURE_PAYLOAD)
-        monkeypatch.setattr(inventory_tools, "upload_signed_file", lambda *args, **kwargs: SECURE_URL)
+        monkeypatch.setattr(
+            inventory_tools, "get_upload_signature", lambda file_type: SIGNATURE_PAYLOAD
+        )
+        monkeypatch.setattr(
+            inventory_tools, "upload_signed_file", lambda *args, **kwargs: SECURE_URL
+        )
         create_inventory.error = error
 
     with pytest.raises(RuntimeError) as raised:
@@ -248,24 +263,37 @@ def test_chatgpt_analyze_inventory_fetches_download_url_and_hides_it(monkeypatch
     def fake_get(url, **kwargs):
         """Record the ChatGPT download URL and timeout."""
         downloaded.append((url, kwargs.get("timeout")))
+
         class Response:
             status_code = 200
             content = b"xlsx-bytes"
+
             def raise_for_status(self):
                 """Accept the scripted successful download."""
                 return None
+
             def close(self):
                 """Release the scripted download."""
                 return None
+
             def iter_content(self, chunk_size=8192):
                 """Yield the scripted ChatGPT file bytes."""
                 yield self.content
+
         return Response()
 
     monkeypatch.setattr(inventory_tools.requests, "get", fake_get)
-    monkeypatch.setattr(inventory_tools, "ingest_chatgpt_inventory", lambda *args: {
-        "id": 1, "name": args[1], "type": "INPUT", "status": "PROCESSING", "createdAt": "t"
-    })
+    monkeypatch.setattr(
+        inventory_tools,
+        "ingest_chatgpt_inventory",
+        lambda *args: {
+            "id": 1,
+            "name": args[1],
+            "type": "INPUT",
+            "status": "PROCESSING",
+            "createdAt": "t",
+        },
+    )
     tool = next(t for t in get_chatgpt_tools() if t.name == "analyze_inventory")
     token = identity.bind_id_external_user(12345)
     try:
@@ -458,7 +486,9 @@ def test_fetch_chatgpt_file_denies_when_dns_raises_oserror(monkeypatch):
     monkeypatch.setattr(
         inventory_tools.socket,
         "getaddrinfo",
-        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("name resolution failed")),
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            OSError("name resolution failed")
+        ),
     )
     monkeypatch.setattr(
         inventory_tools.requests,
@@ -507,6 +537,7 @@ def test_fetch_chatgpt_file_rejects_host_outside_allowlist(monkeypatch):
 
 def test_fetch_chatgpt_file_maps_http_errors_without_leaking_the_url(monkeypatch):
     """Verify that fetch chatgpt file maps http errors without leaking the url."""
+
     class Response:
         status_code = 403
         content = b""
@@ -515,7 +546,9 @@ def test_fetch_chatgpt_file_maps_http_errors_without_leaking_the_url(monkeypatch
             """Surface the scripted ChatGPT download failure."""
             raise requests.HTTPError("403 for https://files.chatgpt.example/tmp")
 
-    monkeypatch.setattr(inventory_tools.requests, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(
+        inventory_tools.requests, "get", lambda *args, **kwargs: Response()
+    )
 
     with pytest.raises(RuntimeError) as raised:
         inventory_tools.fetch_chatgpt_file(
@@ -537,7 +570,9 @@ def test_chatgpt_catalog_analyze_inventory_uses_host_file_schema():
     from cmd.api.acl.open_ai.catalog import get_chatgpt_tools
     from cmd.api.acl.open_ai.server import build_mcp_server
 
-    tool = next(item for item in get_chatgpt_tools() if item.name == "analyze_inventory")
+    tool = next(
+        item for item in get_chatgpt_tools() if item.name == "analyze_inventory"
+    )
     assert set(tool.args) == {"name", "fileType", "file"}
     assert "ticket" not in tool.args
     assert "fileName" not in tool.args
@@ -573,7 +608,12 @@ def test_chatgpt_inventory_descriptions_omit_aether_tickets():
     analyze = descriptions["analyze_inventory"]
     polling = descriptions["get_inventory_analysis"]
 
-    for text in (analyze, registered["analyze_inventory"], polling, registered["get_inventory_analysis"]):
+    for text in (
+        analyze,
+        registered["analyze_inventory"],
+        polling,
+        registered["get_inventory_analysis"],
+    ):
         assert "Aether app" not in text
         assert "ticket" not in text
         assert "id_external_user" not in text
@@ -604,7 +644,9 @@ def test_record_created_inventory_allows_get_inventory_analysis(services):
             )
 
     inventory_tools.configure(tickets=tickets, plans=Plans())
-    tool = next(item for item in get_chatgpt_tools() if item.name == "get_inventory_analysis")
+    tool = next(
+        item for item in get_chatgpt_tools() if item.name == "get_inventory_analysis"
+    )
     user_token = identity.bind_id_external_user(12345)
     company_token = identity.bind_id_external_company(90)
     try:
@@ -641,7 +683,9 @@ def test_get_inventory_analysis_rejects_other_company_even_when_redis_has_id(ser
             )
 
     inventory_tools.configure(tickets=tickets, plans=Plans())
-    tool = next(item for item in get_chatgpt_tools() if item.name == "get_inventory_analysis")
+    tool = next(
+        item for item in get_chatgpt_tools() if item.name == "get_inventory_analysis"
+    )
     user_token = identity.bind_id_external_user(12345)
     company_token = identity.bind_id_external_company(90)
     try:

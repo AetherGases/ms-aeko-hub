@@ -4,6 +4,7 @@ from aeko_metrics.prices import enrich_prices, lookup_rates
 
 
 def _rates_for_agent_llm(llm: str, prices: dict) -> tuple[float, float]:
+    """Resolve input and output rates for a comma-separated LLM field."""
     parts = [piece.strip() for piece in llm.split(",") if piece.strip()]
     if not parts:
         return lookup_rates(llm, prices)

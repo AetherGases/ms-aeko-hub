@@ -104,7 +104,7 @@ def build_sdk_metrics(**overrides) -> fake_aeko.AekoMetrics:
 @pytest.fixture(autouse=True)
 def no_color(monkeypatch):
     """Disable color output for deterministic log assertions."""
-    monkeypatch.delenv('AEKO_LOG_COLOR', raising=False)
+    monkeypatch.delenv("AEKO_LOG_COLOR", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -192,7 +192,11 @@ def test_an_agent_that_reached_for_no_tool_lists_none():
 
 def test_cost_usd_is_tokens_times_price_per_million():
     """Verify that cost_usd is tokens times price per million."""
-    agents = [build_agent(input_tokens=1_000_000, output_tokens=1_000_000, llm="gemini-3.5-flash")]
+    agents = [
+        build_agent(
+            input_tokens=1_000_000, output_tokens=1_000_000, llm="gemini-3.5-flash"
+        )
+    ]
     assert cost_usd(agents, PRICES) == 0.75
 
 
@@ -207,14 +211,20 @@ def test_cost_usd_sums_every_invocation():
 
 def test_an_unknown_model_contributes_zero():
     """Verify that an unknown model contributes zero."""
-    agents = [build_agent(input_tokens=1_000_000, output_tokens=1_000_000, llm="mystery-model")]
+    agents = [
+        build_agent(
+            input_tokens=1_000_000, output_tokens=1_000_000, llm="mystery-model"
+        )
+    ]
     assert cost_usd(agents, PRICES) == 0.0
 
 
 def test_cost_usd_resolves_provider_model_paths():
     """Verify that LangChain/Gemini model ids match AEKO_MODEL_PRICES keys."""
     agents = [
-        build_agent(input_tokens=1_000_000, output_tokens=0, llm="models/gemini-3.5-flash"),
+        build_agent(
+            input_tokens=1_000_000, output_tokens=0, llm="models/gemini-3.5-flash"
+        ),
     ]
     assert cost_usd(agents, PRICES) == 0.15
 
@@ -278,9 +288,16 @@ def test_cost_usd_uses_configured_fast_model_alias(monkeypatch):
     """Verify that AEKO_FAST_MODEL is priced when the table uses a different key."""
     monkeypatch.setenv("AEKO_FAST_MODEL", "gemini-3.5-flash-lite")
     prices = {
-        "gemini-3.1-flash-lite": {"input_per_million": 0.025, "output_per_million": 0.15},
+        "gemini-3.1-flash-lite": {
+            "input_per_million": 0.025,
+            "output_per_million": 0.15,
+        },
     }
-    agents = [build_agent(input_tokens=1_000_000, output_tokens=0, llm="gemini-3.5-flash-lite")]
+    agents = [
+        build_agent(
+            input_tokens=1_000_000, output_tokens=0, llm="gemini-3.5-flash-lite"
+        )
+    ]
     assert cost_usd(agents, prices) == 0.025
 
 
@@ -308,7 +325,9 @@ def test_the_write_query_is_the_document_the_dashboard_reads():
 
 def test_the_write_query_never_names_the_identifier_itself():
     """Verify that the write query never names the identifier itself."""
-    assert "_id" not in q.create_metric_query(build_metric(id="65a8b3d6c0f8e1d7f4b2c0bb"))
+    assert "_id" not in q.create_metric_query(
+        build_metric(id="65a8b3d6c0f8e1d7f4b2c0bb")
+    )
 
 
 def test_the_write_query_keeps_every_invocation_of_a_repeated_agent():
@@ -346,12 +365,16 @@ def test_creating_a_metric_stores_the_document():
 
     repository.create_metric(build_metric())
 
-    assert collection.call_args("insert_one") == [(q.create_metric_query(build_metric()),)]
+    assert collection.call_args("insert_one") == [
+        (q.create_metric_query(build_metric()),)
+    ]
 
 
 def test_creating_a_metric_returns_it_with_the_identifier_mongo_assigned():
     """Verify that creating a metric returns it with the identifier mongo assigned."""
-    repository, _ = build_repository(StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c0bb"))
+    repository, _ = build_repository(
+        StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c0bb")
+    )
 
     stored = repository.create_metric(build_metric())
 
@@ -360,7 +383,9 @@ def test_creating_a_metric_returns_it_with_the_identifier_mongo_assigned():
 
 def test_a_write_that_fails_is_reported_as_a_database_error():
     """Verify that a write that fails is reported as a database error."""
-    repository, _ = build_repository(StubCollection(error=RuntimeError("mongo is down")))
+    repository, _ = build_repository(
+        StubCollection(error=RuntimeError("mongo is down"))
+    )
 
     with pytest.raises(RuntimeError, match="Error creating aeko metric in database"):
         repository.create_metric(build_metric())
@@ -387,7 +412,9 @@ def test_an_empty_collection_reads_as_an_empty_list():
 
 def test_a_read_that_fails_is_reported_as_a_database_error():
     """Verify that a read that fails is reported as a database error."""
-    repository, _ = build_repository(StubCollection(error=RuntimeError("mongo is down")))
+    repository, _ = build_repository(
+        StubCollection(error=RuntimeError("mongo is down"))
+    )
 
     with pytest.raises(RuntimeError, match="Error fetching aeko metrics from database"):
         repository.get_all_metrics()
@@ -426,8 +453,12 @@ def test_both_repository_methods_are_logged_as_database_operations(capsys):
     repository.get_all_metrics()
 
     logged = descriptions(capsys, Module.DATABASE.value)
-    assert any(line.startswith("aeko_metrics.create_metric succeeded") for line in logged)
-    assert any(line.startswith("aeko_metrics.get_all_metrics succeeded") for line in logged)
+    assert any(
+        line.startswith("aeko_metrics.create_metric succeeded") for line in logged
+    )
+    assert any(
+        line.startswith("aeko_metrics.get_all_metrics succeeded") for line in logged
+    )
 
 
 class StubMetricsRepository:
@@ -535,6 +566,7 @@ def test_a_run_that_reported_nothing_is_not_written(recorded):
 
 def test_a_sink_that_raises_is_given_up_on_rather_than_propagated(capsys):
     """Verify that a sink that raises is given up on rather than propagated."""
+
     def explode(metrics):
         """Raise the configured failure to exercise error handling."""
         raise RuntimeError("mongo is down")
@@ -690,7 +722,9 @@ def test_the_sink_carries_a_failed_run_across(api_main):
 
 def test_a_metric_keeps_the_company_from_the_run():
     """Verify that a metric keeps the company from the run."""
-    metric = build_metric(id_external_company=90, id_external_user=12345, created_at=CREATED_AT)
+    metric = build_metric(
+        id_external_company=90, id_external_user=12345, created_at=CREATED_AT
+    )
 
     assert metric.id_external_company == 90
     assert metric.id_external_user == 12345
@@ -734,9 +768,24 @@ def test_company_cost_sums_each_user_and_the_company(monkeypatch):
     )
     repository = StubMetricsRepository()
     repository.company_metrics = [
-        build_metric(id_external_user=1, id_external_company=90, cost_usd=0.10, created_at=CREATED_AT),
-        build_metric(id_external_user=1, id_external_company=90, cost_usd=0.15, created_at=CREATED_AT),
-        build_metric(id_external_user=2, id_external_company=90, cost_usd=0.20, created_at=CREATED_AT),
+        build_metric(
+            id_external_user=1,
+            id_external_company=90,
+            cost_usd=0.10,
+            created_at=CREATED_AT,
+        ),
+        build_metric(
+            id_external_user=1,
+            id_external_company=90,
+            cost_usd=0.15,
+            created_at=CREATED_AT,
+        ),
+        build_metric(
+            id_external_user=2,
+            id_external_company=90,
+            cost_usd=0.20,
+            created_at=CREATED_AT,
+        ),
     ]
 
     result = Service(repository).company_cost(7, 90)
@@ -744,7 +793,10 @@ def test_company_cost_sums_each_user_and_the_company(monkeypatch):
     assert repository.company_calls == [(90, CREATED_AT - timedelta(days=7))]
     assert result.id_external_company == 90
     assert result.cost_usd == 0.45
-    assert [(user.id_external_user, user.cost_usd) for user in result.users] == [(1, 0.25), (2, 0.20)]
+    assert [(user.id_external_user, user.cost_usd) for user in result.users] == [
+        (1, 0.25),
+        (2, 0.20),
+    ]
 
 
 def test_company_cost_rejects_a_non_positive_window():
@@ -798,7 +850,9 @@ def test_company_cost_skips_runs_without_a_user():
     result = Service(repository).company_cost(7, 90)
 
     assert result.cost_usd == 0.1
-    assert [(user.id_external_user, user.cost_usd) for user in result.users] == [(1, 0.1)]
+    assert [(user.id_external_user, user.cost_usd) for user in result.users] == [
+        (1, 0.1)
+    ]
 
 
 def test_a_failed_company_cost_read_becomes_a_runtime_error():
@@ -811,9 +865,13 @@ def test_a_failed_company_cost_read_becomes_a_runtime_error():
 
 def test_a_failed_company_metrics_fetch_is_a_database_error():
     """Verify that a failed company metrics fetch is a database error."""
-    repository, _ = build_repository(StubCollection(error=RuntimeError("mongo is down")))
+    repository, _ = build_repository(
+        StubCollection(error=RuntimeError("mongo is down"))
+    )
 
-    with pytest.raises(RuntimeError, match="Error fetching company aeko metrics from database"):
+    with pytest.raises(
+        RuntimeError, match="Error fetching company aeko metrics from database"
+    ):
         repository.get_company_metrics(90, CREATED_AT)
 
 
@@ -834,9 +892,12 @@ def test_record_aeko_metrics_binds_the_company_for_the_sink():
 
     set_aeko_metrics_sink(sink)
 
-    assert record_aeko_metrics(
-        build_sdk_metrics(), id_external_user=12345, id_external_company=90
-    ) is True
+    assert (
+        record_aeko_metrics(
+            build_sdk_metrics(), id_external_user=12345, id_external_company=90
+        )
+        is True
+    )
     assert seen == [(12345, 90)]
     assert current_metric_id_external_user() is None
     assert current_metric_id_external_company() is None

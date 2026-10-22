@@ -4,7 +4,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from improvement_plan.entity import ExtractedInventory, ImprovementPlan, InventoryEmission
+from improvement_plan.entity import (
+    ExtractedInventory,
+    ImprovementPlan,
+    InventoryEmission,
+)
 from improvement_plan.improvement_plan import MalformedPlanError
 from internal.http import improvement_plan_handlers
 from tests.ms_auth_doubles import override_ms_auth
@@ -13,7 +17,9 @@ ROUTE = "/ai/report"
 GET_ROUTE = "/ai/report/{id_external_inventory}"
 INVENTORY_REPORT_AUTH_HEADERS = {"authentication-key": "test-inventory-report-key"}
 
-INVENTORY_MARKDOWN = "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+INVENTORY_MARKDOWN = (
+    "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+)
 
 REPORT_BODY = {
     "id_external_context_inventory": 502,
@@ -22,15 +28,19 @@ REPORT_BODY = {
     "id_external_company": 90,
     "gases": [{"id": 1, "name": "CO2"}],
     "scopes": [{"id": 1, "name": "Escopo 1"}],
-    "categories": [{"id": 1, "name": "Combustão estacionária", "classification": None}    ],
+    "categories": [{"id": 1, "name": "Combustão estacionária", "classification": None}],
 }
 
 
 def post_report(client, body=None, **kwargs):
     """POST /ai/report with the internal authentication-key header."""
     headers = dict(kwargs.pop("headers", {}))
-    headers.setdefault("authentication-key", INVENTORY_REPORT_AUTH_HEADERS["authentication-key"])
-    return client.post(ROUTE, json=body if body is not None else REPORT_BODY, headers=headers, **kwargs)
+    headers.setdefault(
+        "authentication-key", INVENTORY_REPORT_AUTH_HEADERS["authentication-key"]
+    )
+    return client.post(
+        ROUTE, json=body if body is not None else REPORT_BODY, headers=headers, **kwargs
+    )
 
 
 EXTRACTED_INVENTORY = ExtractedInventory(
@@ -80,7 +90,13 @@ STORED_PLAN = ImprovementPlan(
 
 
 class StubReportService:
-    def __init__(self, inventory=EXTRACTED_INVENTORY, plan=STORED_PLAN, error=None, get_error=None):
+    def __init__(
+        self,
+        inventory=EXTRACTED_INVENTORY,
+        plan=STORED_PLAN,
+        error=None,
+        get_error=None,
+    ):
         self.inventory = inventory
         self.plan = plan
         self.error = error
@@ -135,7 +151,9 @@ def build_client(service=None, db="fake-db", analyzer_factory=build_analyzer_fac
     if analyzer_factory is not None:
         app.state.aeko_inventory_analyzer_factory = analyzer_factory
     if service is not None:
-        app.dependency_overrides[improvement_plan_handlers.get_improvement_plan_service] = lambda: service
+        app.dependency_overrides[
+            improvement_plan_handlers.get_improvement_plan_service
+        ] = lambda: service
     return TestClient(app)
 
 
@@ -145,7 +163,12 @@ def test_input_report_returns_the_structured_inventory(patched_user_service):
 
     assert response.status_code == 200
     assert response.json() == EXTRACTED_INVENTORY_JSON
-    assert set(response.json()) == {"description", "start_period", "end_period", "emissions"}
+    assert set(response.json()) == {
+        "description",
+        "start_period",
+        "end_period",
+        "emissions",
+    }
 
 
 def test_input_report_forwards_what_the_flow_needs(patched_user_service):
@@ -167,17 +190,25 @@ def test_input_report_forwards_what_the_flow_needs(patched_user_service):
         analyzer_factory,
     ) = args
     assert id_external_company == 90
-    assert (id_external_inventory, inventory, id_external_user) == (502, INVENTORY_MARKDOWN, 12345)
+    assert (id_external_inventory, inventory, id_external_user) == (
+        502,
+        INVENTORY_MARKDOWN,
+        12345,
+    )
     assert gases == [{"id": 1, "name": "CO2"}]
     assert scopes == [{"id": 1, "name": "Escopo 1"}]
-    assert categories == [{"id": 1, "name": "Combustão estacionária", "classification": None}]
+    assert categories == [
+        {"id": 1, "name": "Combustão estacionária", "classification": None}
+    ]
     assert isinstance(user_service, StubUserService)
     assert callable(analyzer_factory)
 
 
 def test_input_report_maps_value_error_to_400(patched_user_service):
     """Verify that input report maps value error to 400."""
-    service = StubReportService(error=ValueError("inventory is required to analyze an inventory."))
+    service = StubReportService(
+        error=ValueError("inventory is required to analyze an inventory.")
+    )
 
     response = post_report(build_client(service), REPORT_BODY)
 
@@ -185,7 +216,9 @@ def test_input_report_maps_value_error_to_400(patched_user_service):
     assert response.json()["detail"] == "inventory is required to analyze an inventory."
 
 
-def test_input_report_still_maps_other_not_found_value_errors_to_404(patched_user_service):
+def test_input_report_still_maps_other_not_found_value_errors_to_404(
+    patched_user_service,
+):
     """Verify that input report maps unrelated not-found errors to 404."""
     service = StubReportService(
         error=ValueError("Improvement plan with id_external_inventory 502 not found.")
@@ -202,7 +235,9 @@ def test_input_report_still_maps_other_not_found_value_errors_to_404(patched_use
 def test_input_report_maps_a_plan_that_never_took_shape_to_422(patched_user_service):
     """Verify that input report maps a plan that never took shape to 422."""
     service = StubReportService(
-        error=MalformedPlanError("The analysis produced no plan in the shape a report is stored in.")
+        error=MalformedPlanError(
+            "The analysis produced no plan in the shape a report is stored in."
+        )
     )
 
     response = post_report(build_client(service), REPORT_BODY)
@@ -232,9 +267,13 @@ def test_input_report_returns_503_when_database_is_not_initialized():
     assert response.json()["detail"] == "Database is not initialized"
 
 
-def test_input_report_returns_500_when_the_sdk_was_never_configured(patched_user_service):
+def test_input_report_returns_500_when_the_sdk_was_never_configured(
+    patched_user_service,
+):
     """Verify that input report returns 500 when the sdk was never configured."""
-    response = post_report(build_client(StubReportService(), analyzer_factory=None), REPORT_BODY)
+    response = post_report(
+        build_client(StubReportService(), analyzer_factory=None), REPORT_BODY
+    )
 
     assert response.status_code == 500
     assert response.json()["detail"] == "Aeko SDK is not initialized"
@@ -261,7 +300,10 @@ def test_input_report_requires_every_body_field(missing, patched_user_service):
     assert response.status_code == 422
 
 
-@pytest.mark.parametrize("field", ["id_external_context_inventory", "id_external_user", "id_external_company"])
+@pytest.mark.parametrize(
+    "field",
+    ["id_external_context_inventory", "id_external_user", "id_external_company"],
+)
 def test_the_external_identifiers_must_be_numbers(field, patched_user_service):
     """Verify that the external identifiers must be numbers."""
     body = {**REPORT_BODY, field: "not-a-number"}
@@ -298,7 +340,9 @@ def test_an_unknown_category_classification_is_rejected(patched_user_service):
     """Verify that an unknown category classification is rejected."""
     body = {
         **REPORT_BODY,
-        "categories": [{"id": 1, "name": "Purchased goods", "classification": "SIDEWAYS"}],
+        "categories": [
+            {"id": 1, "name": "Purchased goods", "classification": "SIDEWAYS"}
+        ],
     }
 
     response = post_report(build_client(StubReportService()), body)
@@ -328,7 +372,9 @@ def test_input_report_returns_401_for_invalid_authentication_key(patched_user_se
     assert response.json()["detail"] == "Invalid authentication key."
 
 
-def test_get_report_returns_404_when_plan_company_does_not_match_token(patched_user_service):
+def test_get_report_returns_404_when_plan_company_does_not_match_token(
+    patched_user_service,
+):
     """Verify that get report returns 404 when the stored plan belongs to another company."""
     plan = ImprovementPlan(
         id_external_inventory=502,
@@ -337,7 +383,9 @@ def test_get_report_returns_404_when_plan_company_does_not_match_token(patched_u
         method="m",
         reasoning="r",
     )
-    response = build_client(StubReportService(plan=plan)).get(GET_ROUTE.format(id_external_inventory=502))
+    response = build_client(StubReportService(plan=plan)).get(
+        GET_ROUTE.format(id_external_inventory=502)
+    )
 
     assert response.status_code == 404
     assert response.status_code != 403
@@ -345,7 +393,9 @@ def test_get_report_returns_404_when_plan_company_does_not_match_token(patched_u
 
 def test_get_report_returns_the_textual_plan(patched_user_service):
     """Verify that get report returns the textual plan."""
-    response = build_client(StubReportService()).get(GET_ROUTE.format(id_external_inventory=502))
+    response = build_client(StubReportService()).get(
+        GET_ROUTE.format(id_external_inventory=502)
+    )
 
     assert response.status_code == 200
     assert response.json() == {
@@ -367,7 +417,9 @@ def test_get_report_asks_for_the_inventory_identifier(patched_user_service):
 def test_get_report_maps_a_missing_plan_to_404(patched_user_service):
     """Verify that get report maps a missing plan to 404."""
     service = StubReportService(
-        get_error=ValueError("Improvement plan with id_external_inventory 502 not found.")
+        get_error=ValueError(
+            "Improvement plan with id_external_inventory 502 not found."
+        )
     )
 
     response = build_client(service).get(GET_ROUTE.format(id_external_inventory=502))
@@ -377,7 +429,9 @@ def test_get_report_maps_a_missing_plan_to_404(patched_user_service):
 
 def test_get_report_returns_503_when_database_is_not_initialized():
     """Verify that get report returns 503 when database is not initialized."""
-    response = build_client(service=None, db=None).get(GET_ROUTE.format(id_external_inventory=502))
+    response = build_client(service=None, db=None).get(
+        GET_ROUTE.format(id_external_inventory=502)
+    )
 
     assert response.status_code == 503
 

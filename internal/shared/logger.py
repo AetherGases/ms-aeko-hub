@@ -35,6 +35,7 @@ class Module(str, Enum):
     REQUEST = "request"
 
     def __str__(self) -> str:
+        """Return the log category name."""
         return self.value
 
 
@@ -47,7 +48,7 @@ def _stream() -> Any:
 def color_enabled(stream: Any = None) -> bool:
     """Return whether ANSI colors are enabled by the environment or terminal detection."""
 
-    override = os.environ.get('AEKO_LOG_COLOR', "").strip().lower()
+    override = os.environ.get("AEKO_LOG_COLOR", "").strip().lower()
     if override in TRUE_VALUES:
         return True
     if override in FALSE_VALUES:
@@ -102,6 +103,7 @@ def write(text: str) -> None:
 
 
 def _emit(module: Module | str, description: str, color: str) -> None:
+    """Write a colored log entry for the given module."""
     write(paint(format_entry(module, description), color))
 
 

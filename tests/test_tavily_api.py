@@ -106,14 +106,18 @@ def test_get_tavily_search_tools_returns_search_and_research():
 
 def test_get_tavily_search_tools_search_entry_is_backed_by_tavily_search():
     """Verify that get tavily search tools search entry is backed by tavily search."""
-    tool = next(t for t in tavily_api.get_tavily_search_tools() if t.name == "tavily_search")
+    tool = next(
+        t for t in tavily_api.get_tavily_search_tools() if t.name == "tavily_search"
+    )
 
     assert tool.func("query") == {"query": "query"}
 
 
 def test_get_tavily_search_tools_research_entry_is_backed_by_tavily_research():
     """Verify that get tavily search tools research entry is backed by tavily research."""
-    tool = next(t for t in tavily_api.get_tavily_search_tools() if t.name == "tavily_research")
+    tool = next(
+        t for t in tavily_api.get_tavily_search_tools() if t.name == "tavily_research"
+    )
 
     assert tool.func("query") == {"query": "query", "search_depth": "advanced"}
 

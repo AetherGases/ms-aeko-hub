@@ -14,6 +14,22 @@ from fastapi import FastAPI
 from pymongo import MongoClient
 from redis import Redis
 
+from cmd.api.constants import (
+    AEKO_FAST_MODEL,
+    AEKO_MAX_TOKENS,
+    AEKO_REPORT_MAX_TOKENS,
+    AEKO_SLOW_MODEL,
+    AEKO_TEMPERATURE,
+    AEKO_TOP_K,
+    AEKO_TOP_P,
+    CHATGPT_MCP_PREFIX,
+    DB_NAME,
+    GEMINI_API_KEY,
+    MCP_WARM_UP,
+    MONGO_URI,
+    OPENAPI_TAGS,
+    REDIS_URI,
+)
 from cmd.api.integrations.a2a.service import Service as A2AService
 from cmd.api.acl.mcp_auth import configure as configure_mcp_auth
 from cmd.api.acl.mcp_auth import wrap_mcp_auth
@@ -47,7 +63,10 @@ from aeko_metrics.service import Service as AekoMetricsService
 from hub_metrics.database.repository import Repository as HubMetricsRepository
 from hub_metrics.entity import Metric
 from hub_metrics.service import Service as HubMetricsService
-from cmd.memory_generator_worker.constants import REDIS_SCAN_COUNT, SESSION_INACTIVITY_MINUTES
+from cmd.memory_generator_worker.constants import (
+    REDIS_SCAN_COUNT,
+    SESSION_INACTIVITY_MINUTES,
+)
 from improvement_plan.database.repository import Repository as ImprovementPlanRepository
 from improvement_plan.improvement_plan import MalformedPlanError
 from improvement_plan.service import Service as ImprovementPlanService
@@ -99,30 +118,18 @@ from aeko import (
 
 load_dotenv()
 
-MONGO_URI = os.getenv("MONGO_URI")
-DB_NAME = os.getenv("DB_NAME")
-REDIS_URI = os.getenv("REDIS_URI")
-
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-AEKO_FAST_MODEL = os.getenv("AEKO_FAST_MODEL")
-AEKO_SLOW_MODEL = os.getenv("AEKO_SLOW_MODEL")
-AEKO_MAX_TOKENS = os.getenv("AEKO_MAX_TOKENS")
-AEKO_REPORT_MAX_TOKENS = os.getenv("AEKO_REPORT_MAX_TOKENS")
-AEKO_TEMPERATURE = os.getenv("AEKO_TEMPERATURE")
-AEKO_TOP_P = os.getenv("AEKO_TOP_P")
-AEKO_TOP_K = os.getenv("AEKO_TOP_K")
-
 
 TAVILY_SITE_MAP_TOOLS = [AekoTool(tool=tool) for tool in get_tavily_site_map_tool()]
 TAVILY_RESEARCH_TOOLS = [AekoTool(tool=tool) for tool in get_tavily_search_tools()]
 
 
-IMPROVEMENT_PLAN_TOOLS = [AekoTool(tool=tool) for tool in get_improvement_plan_tools()] + [
-    AekoTool(tool=tool) for tool in get_improvement_plan_problem_tools()
-]
+IMPROVEMENT_PLAN_TOOLS = [
+    AekoTool(tool=tool) for tool in get_improvement_plan_tools()
+] + [AekoTool(tool=tool) for tool in get_improvement_plan_problem_tools()]
 USER_MEMORY_TOOLS = [AekoTool(tool=tool) for tool in get_user_memory_tools()]
-USER_PROFILE_WRITE_TOOLS = [AekoTool(tool=tool) for tool in get_user_profile_write_tools()]
+USER_PROFILE_WRITE_TOOLS = [
+    AekoTool(tool=tool) for tool in get_user_profile_write_tools()
+]
 SESSION_TOOLS = [AekoTool(tool=tool) for tool in get_session_tools()]
 
 
@@ -139,7 +146,6 @@ ROI_PAYBACK_TOOLS = [AekoTool(tool=tool) for tool in get_roi_payback_tools()]
 
 
 AEKO_TOOLS = {
-
     "FAQ": list(TAVILY_SITE_MAP_TOOLS)
     + list(TAVILY_RESEARCH_TOOLS)
     + list(USER_MEMORY_TOOLS)
@@ -149,21 +155,18 @@ AEKO_TOOLS = {
     + list(USER_MEMORY_TOOLS)
     + list(SESSION_TOOLS)
     + list(CALCULATOR_TOOLS),
-
     "Analista de Poluentes": list(TAVILY_RESEARCH_TOOLS)
     + list(IMPROVEMENT_PLAN_TOOLS)
     + list(USER_MEMORY_TOOLS)
     + list(SESSION_TOOLS)
     + list(CLIMATIQ_TOOLS)
     + list(CALCULATOR_TOOLS),
-
     "Analista de Gases Verdes": list(TAVILY_RESEARCH_TOOLS)
     + list(IMPROVEMENT_PLAN_TOOLS)
     + list(USER_MEMORY_TOOLS)
     + list(SESSION_TOOLS)
     + list(GASES_INFO_TOOLS)
     + list(CALCULATOR_TOOLS),
-
     "Coordenador de Melhoria Contínua": list(TAVILY_RESEARCH_TOOLS)
     + list(IMPROVEMENT_PLAN_TOOLS)
     + list(USER_MEMORY_TOOLS)
@@ -176,13 +179,8 @@ AEKO_TOOLS = {
 
 MCP_SESSIONS = (CHROMA_SESSION,)
 
-CHATGPT_MCP_PREFIX = "/ai/mcp"
-
 chatgpt_mcp = build_mcp_server()
 chatgpt_mcp_app = wrap_mcp_auth(chatgpt_mcp.streamable_http_app())
-
-
-MCP_WARM_UP = os.getenv("AEKO_MCP_WARM_UP", "true")
 
 mongo_client = None
 redis_client = None
@@ -190,10 +188,12 @@ db = None
 
 
 def _int_or_none(value: str | None) -> int | None:
+    """Parse an integer setting, or return None when it is empty."""
     return int(value) if value else None
 
 
 def _float_or_none(value: str | None) -> float | None:
+    """Parse a float setting, or return None when it is empty."""
     return float(value) if value else None
 
 
@@ -241,7 +241,9 @@ class _Messenger(AekoMessenger):
 class _InventoryAnalyzer(AekoInventoryAnalyzer):
     """Adapt SDK analysis errors to domain errors while retaining run metrics."""
 
-    def analyze(self, inventory, *, id_external_inventory, id_request, gases, scopes, categories):
+    def analyze(
+        self, inventory, *, id_external_inventory, id_request, gases, scopes, categories
+    ):
         """Analyze an inventory and translate malformed SDK output to a domain error."""
         try:
             return super().analyze(
@@ -445,26 +447,15 @@ async def lifespan(app: FastAPI):
     redis_client.close()
     mongo_client.close()
 
-OPENAPI_TAGS = [
-    {
-        "name": "Users",
-        "description": "Endpoints for retrieving user profile data used by the AI gateway.",
-    },
-    {
-        "name": "Sessions",
-        "description": "Endpoints for listing sessions and session messages.",
-    },
-    {
-        "name": "Reports",
-        "description": "Endpoints for analyzing inventories and reading the stored textual improvement plan.",
-    },
-]
-
 
 def development_openapi_urls() -> dict:
     """Return FastAPI docs URLs when ENV is development; otherwise disable them."""
     if os.environ.get("ENV", "").lower() == "development":
-        return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+        return {
+            "docs_url": "/docs",
+            "redoc_url": "/redoc",
+            "openapi_url": "/openapi.json",
+        }
     return {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 

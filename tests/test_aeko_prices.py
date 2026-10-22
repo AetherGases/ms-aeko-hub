@@ -95,9 +95,13 @@ def test_lookup_rates_treats_null_price_entry_as_zero():
 def test_lookup_rates_picks_the_longest_fuzzy_price_key():
     """Verify that fuzzy lookup prefers the longest matching price key."""
     table = {
-        "vendor/gemini-3.5-flash": {"input_per_million": 0.15, "output_per_million": 0.60},
-        "vendor/gemini-3.5-flash-lite": {"input_per_million": 0.025, "output_per_million": 0.15},
+        "vendor/gemini-3.5-flash": {
+            "input_per_million": 0.15,
+            "output_per_million": 0.60,
+        },
+        "vendor/gemini-3.5-flash-lite": {
+            "input_per_million": 0.025,
+            "output_per_million": 0.15,
+        },
     }
     assert lookup_rates("gemini-3.5-flash-lite", table) == (0.025, 0.15)
-
-

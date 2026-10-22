@@ -28,8 +28,10 @@ def test_package_constants_have_one_definition_module(package):
             continue
         for node in ast.parse(path.read_text(encoding="utf-8")).body:
             targets = (
-                node.targets if isinstance(node, ast.Assign)
-                else [node.target] if isinstance(node, ast.AnnAssign)
+                node.targets
+                if isinstance(node, ast.Assign)
+                else [node.target]
+                if isinstance(node, ast.AnnAssign)
                 else []
             )
             for target in targets:
@@ -46,7 +48,12 @@ def test_package_constants_have_one_definition_module(package):
         ("internal/shared", "APP_NAME", "custom-hub", "custom-hub"),
         ("internal/shared", "FAILING_STATUS", "499", 499),
         ("cmd/api/tools", "CALCULATOR_MAX_EXPRESSION_LENGTH", "200", 200),
-        ("cmd/api/tools", "GET_IMPROVEMENT_PLAN_BY_INVENTORY_DESCRIPTION", "plan from env", "plan from env"),
+        (
+            "cmd/api/tools",
+            "GET_IMPROVEMENT_PLAN_BY_INVENTORY_DESCRIPTION",
+            "plan from env",
+            "plan from env",
+        ),
         ("cmd/api/integrations/mcp", "DEFAULT_CALL_TIMEOUT", "17.5", 17.5),
         ("cmd/memory_generator_worker", "SESSION_INACTIVITY_MINUTES", "30", 30),
         ("upload_ticket", "INVENTORY_UPLOAD_TICKET_TTL_SECONDS", "600", 600),
@@ -55,7 +62,9 @@ def test_package_constants_have_one_definition_module(package):
         ("oauth", "OAUTH_CLIENT_ID", "chatgpt", "chatgpt"),
     ],
 )
-def test_constants_use_environment_overrides(monkeypatch, package, key, value, expected):
+def test_constants_use_environment_overrides(
+    monkeypatch, package, key, value, expected
+):
     """Honor environment settings and convert numeric configuration to its runtime type."""
     monkeypatch.setenv(key, value)
     path = Path(__file__).resolve().parents[1] / package / "constants.py"
@@ -78,10 +87,17 @@ def test_finance_descriptions_follow_configured_horizon(monkeypatch):
         ("internal/shared", "BLUE", '"\\u001b[36m"', "\033[36m"),
         ("internal/shared", "INDENT", "  ", "  "),
         ("cmd/api/integrations/mcp", "QUERY_INCLUDE", '["documents"]', ["documents"]),
-        ("cmd/api/integrations/mcp", "QUIET_CHILD_ENV", '{"TQDM_DISABLE": "1"}', {"TQDM_DISABLE": "1"}),
+        (
+            "cmd/api/integrations/mcp",
+            "QUIET_CHILD_ENV",
+            '{"TQDM_DISABLE": "1"}',
+            {"TQDM_DISABLE": "1"},
+        ),
     ],
 )
-def test_constants_decode_structured_configuration(monkeypatch, package, key, value, expected):
+def test_constants_decode_structured_configuration(
+    monkeypatch, package, key, value, expected
+):
     """Decode JSON settings while retaining collection types, ANSI escapes, and whitespace."""
     monkeypatch.setenv(key, value)
     path = Path(__file__).resolve().parents[1] / package / "constants.py"
@@ -92,12 +108,16 @@ def test_missing_configuration_has_no_hardcoded_fallback(monkeypatch):
     """Report a missing configuration key when neither the environment nor a file supplies it."""
     monkeypatch.delenv("SESSION_INACTIVITY_MINUTES", raising=False)
     monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
-    path = Path(__file__).resolve().parents[1] / "cmd/memory_generator_worker/constants.py"
+    path = (
+        Path(__file__).resolve().parents[1] / "cmd/memory_generator_worker/constants.py"
+    )
     with pytest.raises(KeyError, match="SESSION_INACTIVITY_MINUTES"):
         runpy.run_path(str(path))
 
 
-def test_configuration_loads_from_env_file_outside_working_directory(monkeypatch, tmp_path):
+def test_configuration_loads_from_env_file_outside_working_directory(
+    monkeypatch, tmp_path
+):
     """Find the repository configuration independently of the launch directory."""
     root = Path(__file__).resolve().parents[1]
     package = tmp_path / "cmd" / "memory_generator_worker"

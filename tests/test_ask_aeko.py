@@ -3,7 +3,11 @@
 import pytest
 from langchain_core.tools import Tool
 
-from cmd.api.integrations.a2a.entity import A2AMessage, A2A_RECIPIENT_AEKO, A2A_SENDER_CHATGPT
+from cmd.api.integrations.a2a.entity import (
+    A2AMessage,
+    A2A_RECIPIENT_AEKO,
+    A2A_SENDER_CHATGPT,
+)
 from cmd.api.tools import ask_aeko as ask_aeko_tools
 from cmd.api.tools import constants as tool_constants
 from session.session import GuardrailRejectedError
@@ -23,9 +27,7 @@ class StubA2A:
     def send(self, message, aeko_messenger_factory, aeko_session_factory):
         """Record one send call and return the scripted result."""
 
-        self.calls.append(
-            (message, aeko_messenger_factory, aeko_session_factory)
-        )
+        self.calls.append((message, aeko_messenger_factory, aeko_session_factory))
         if self.error is not None:
             raise self.error
         return self.result
@@ -115,7 +117,9 @@ def test_ask_aeko_rejects_empty_input_before_send(configured_tool, bad):
     assert a2a.calls == []
 
 
-def test_ask_aeko_rejects_a_company_that_does_not_match_the_token(configured_tool, monkeypatch):
+def test_ask_aeko_rejects_a_company_that_does_not_match_the_token(
+    configured_tool, monkeypatch
+):
     """Reject a company id that does not match the OAuth token."""
 
     a2a, _, _ = configured_tool

@@ -143,7 +143,9 @@ def _plan_document(plan: ImprovementPlan) -> dict[str, Any]:
     }
 
 
-def _plan_catalog(plan: ImprovementPlan, keys: tuple[str, ...] = _plan_catalog_keys) -> dict[str, Any]:
+def _plan_catalog(
+    plan: ImprovementPlan, keys: tuple[str, ...] = _plan_catalog_keys
+) -> dict[str, Any]:
     """Keep only the requested catalog fields of an improvement plan."""
 
     return _pick_keys(_plan_document(plan), keys)
@@ -165,7 +167,9 @@ def _message_document(message: Message) -> dict[str, Any]:
     }
 
 
-def _newest_first(documents: list[dict[str, Any]], field_name: str) -> list[dict[str, Any]]:
+def _newest_first(
+    documents: list[dict[str, Any]], field_name: str
+) -> list[dict[str, Any]]:
     """Order documents by a timestamp field, newest first."""
 
     return sorted(documents, key=lambda item: item.get(field_name) or "", reverse=True)
@@ -206,7 +210,9 @@ def _session_named(user: User, session_name: str) -> Session:
     raise ValueError(f"No session found for session_name {session_name}.")
 
 
-def _plan_by_inventory(id_external_inventory: Any, keys: tuple[str, ...]) -> list[dict[str, Any]]:
+def _plan_by_inventory(
+    id_external_inventory: Any, keys: tuple[str, ...]
+) -> list[dict[str, Any]]:
     """Load one inventory plan through the service and keep the requested fields."""
 
     identifier = _positive_int(id_external_inventory, "id_external_inventory")
@@ -215,7 +221,9 @@ def _plan_by_inventory(id_external_inventory: Any, keys: tuple[str, ...]) -> lis
 
 
 @logged(Module.TOOL, "get_improvement_plan_by_inventory")
-def _get_improvement_plan_by_inventory(id_external_inventory: int) -> list[dict[str, Any]]:
+def _get_improvement_plan_by_inventory(
+    id_external_inventory: int,
+) -> list[dict[str, Any]]:
     """Return the improvement plan for an external inventory identifier."""
 
     return _plan_by_inventory(id_external_inventory, _plan_catalog_keys)
@@ -225,21 +233,27 @@ def _get_improvement_plan_by_inventory(id_external_inventory: int) -> list[dict[
 def _get_improvement_plan_problem(id_external_inventory: int) -> list[dict[str, Any]]:
     """Return the defined problem for an inventory's improvement plan."""
 
-    return _plan_by_inventory(id_external_inventory, ("id_external_inventory", "defined_problem"))
+    return _plan_by_inventory(
+        id_external_inventory, ("id_external_inventory", "defined_problem")
+    )
 
 
 @logged(Module.TOOL, "get_improvement_plan_method")
 def _get_improvement_plan_method(id_external_inventory: int) -> list[dict[str, Any]]:
     """Return the method for an inventory's improvement plan."""
 
-    return _plan_by_inventory(id_external_inventory, ("id_external_inventory", "method"))
+    return _plan_by_inventory(
+        id_external_inventory, ("id_external_inventory", "method")
+    )
 
 
 @logged(Module.TOOL, "get_improvement_plan_reasoning")
 def _get_improvement_plan_reasoning(id_external_inventory: int) -> list[dict[str, Any]]:
     """Return the reasoning for an inventory's improvement plan."""
 
-    return _plan_by_inventory(id_external_inventory, ("id_external_inventory", "reasoning"))
+    return _plan_by_inventory(
+        id_external_inventory, ("id_external_inventory", "reasoning")
+    )
 
 
 def _company_id(user: User) -> int:
@@ -252,7 +266,9 @@ def _company_id(user: User) -> int:
 
 
 @logged(Module.TOOL, "list_latest_improvement_plans")
-def _list_latest_improvement_plans(id_external_user: int, n: int) -> list[dict[str, Any]]:
+def _list_latest_improvement_plans(
+    id_external_user: int, n: int
+) -> list[dict[str, Any]]:
     """Return the n most recently updated improvement plans for the user's company."""
 
     user = _require_user(id_external_user)
@@ -302,7 +318,10 @@ def _list_user_memories(id_external_user: int) -> list[dict[str, Any]]:
     """List unexpired memory field and description pairs for an external user."""
 
     user = _require_user(id_external_user)
-    return [_pick_keys(_memory_document(memory), ("field", "description")) for memory in _valid_memories(user)]
+    return [
+        _pick_keys(_memory_document(memory), ("field", "description"))
+        for memory in _valid_memories(user)
+    ]
 
 
 @logged(Module.TOOL, "list_user_memory_fields")
@@ -310,7 +329,10 @@ def _list_user_memory_fields(id_external_user: int) -> list[dict[str, Any]]:
     """List unexpired memory field names for an external user."""
 
     user = _require_user(id_external_user)
-    return [_pick_keys(_memory_document(memory), ("field",)) for memory in _valid_memories(user)]
+    return [
+        _pick_keys(_memory_document(memory), ("field",))
+        for memory in _valid_memories(user)
+    ]
 
 
 @logged(Module.TOOL, "get_user_memory_by_field")

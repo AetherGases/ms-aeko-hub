@@ -34,7 +34,9 @@ class RecordingRequest:
     """Captures every call `requests.request` would have made."""
 
     def __init__(self, response=None, error=None):
-        self.response = response if response is not None else FakeResponse(payload={"ok": True})
+        self.response = (
+            response if response is not None else FakeResponse(payload={"ok": True})
+        )
         self.error = error
         self.calls = []
 
@@ -72,7 +74,10 @@ def test_login_posts_email_and_password_only(recorded_request):
     assert call["method"] == "POST"
     assert call["url"] == "http://auth.test/api/auth/login"
     assert call["json"] == {"email": "caio@example.com", "password": "secret"}
-    assert "Authorization" not in call.get("headers") or "Authorization" not in call["headers"]
+    assert (
+        "Authorization" not in call.get("headers")
+        or "Authorization" not in call["headers"]
+    )
     assert call["timeout"] == 60.0
 
 

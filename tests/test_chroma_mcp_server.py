@@ -22,12 +22,16 @@ def test_standalone_server_loads_package_constants(monkeypatch):
         namespace = runpy.run_path(str(script))
         assert not namespace["__package__"]
         assert namespace["GASES_INFO_COLLECTION"] == constants.GASES_INFO_COLLECTION
-        assert namespace["IMPROVEMENT_PLAN_PROBLEMS_COLLECTION"] == constants.IMPROVEMENT_PLAN_PROBLEMS_COLLECTION
+        assert (
+            namespace["IMPROVEMENT_PLAN_PROBLEMS_COLLECTION"]
+            == constants.IMPROVEMENT_PLAN_PROBLEMS_COLLECTION
+        )
         assert namespace["EMBEDDING_MODEL"] == constants.EMBEDDING_MODEL
         assert namespace["DEFAULT_RESULT_COUNT"] == constants.DEFAULT_RESULT_COUNT
         assert namespace["QUERY_INCLUDE"] == constants.QUERY_INCLUDE
     finally:
         sys.modules.pop("constants", None)
+
 
 CLOUD_ENV = {
     "CHROMA_TENANT": "tenant-from-env",
@@ -128,8 +132,12 @@ def test_build_client_uses_the_cloud_client_with_the_environments_credentials(
     assert client.api_key == "key-from-env"
 
 
-@pytest.mark.parametrize("missing", ["CHROMA_TENANT", "CHROMA_DATABASE", "CHROMA_API_KEY"])
-def test_build_client_raises_naming_the_missing_variable(monkeypatch, cloud_env, missing):
+@pytest.mark.parametrize(
+    "missing", ["CHROMA_TENANT", "CHROMA_DATABASE", "CHROMA_API_KEY"]
+)
+def test_build_client_raises_naming_the_missing_variable(
+    monkeypatch, cloud_env, missing
+):
     """Verify that build client raises naming the missing variable."""
     monkeypatch.setattr(chroma_mcp_server, "CloudClient", RecordingCloudClient)
     monkeypatch.delenv(missing, raising=False)
@@ -141,7 +149,9 @@ def test_build_client_raises_naming_the_missing_variable(monkeypatch, cloud_env,
 def test_the_embedding_function_is_the_model_the_corpus_was_ingested_with(monkeypatch):
     """Verify that the embedding function is the model the corpus was ingested with."""
     monkeypatch.setattr(
-        chroma_mcp_server, "SentenceTransformerEmbeddingFunction", RecordingEmbeddingFunction
+        chroma_mcp_server,
+        "SentenceTransformerEmbeddingFunction",
+        RecordingEmbeddingFunction,
     )
 
     chroma_mcp_server._embedding_function()
@@ -151,12 +161,16 @@ def test_the_embedding_function_is_the_model_the_corpus_was_ingested_with(monkey
     )
 
 
-def test_get_collection_pins_the_gases_info_collection_and_the_embedding_function(monkeypatch):
+def test_get_collection_pins_the_gases_info_collection_and_the_embedding_function(
+    monkeypatch,
+):
     """Verify that get collection pins the gases info collection and the embedding function."""
     client = FakeClient()
     embedding_function = object()
     monkeypatch.setattr(chroma_mcp_server, "_build_client", lambda: client)
-    monkeypatch.setattr(chroma_mcp_server, "_embedding_function", lambda: embedding_function)
+    monkeypatch.setattr(
+        chroma_mcp_server, "_embedding_function", lambda: embedding_function
+    )
 
     chroma_mcp_server._get_collection()
 
@@ -168,18 +182,24 @@ def test_get_plan_collection_pins_the_problems_collection(monkeypatch):
     client = FakeClient()
     embedding_function = object()
     monkeypatch.setattr(chroma_mcp_server, "_build_client", lambda: client)
-    monkeypatch.setattr(chroma_mcp_server, "_embedding_function", lambda: embedding_function)
+    monkeypatch.setattr(
+        chroma_mcp_server, "_embedding_function", lambda: embedding_function
+    )
 
     chroma_mcp_server._get_plan_collection()
 
-    assert client.get_or_create_collection_calls == [("improvement-plan-problems", embedding_function)]
+    assert client.get_or_create_collection_calls == [
+        ("improvement-plan-problems", embedding_function)
+    ]
 
 
 def test_get_collection_is_resolved_once_per_process(monkeypatch):
     """Verify that get collection is resolved once per process."""
     builds = []
     client = FakeClient()
-    monkeypatch.setattr(chroma_mcp_server, "_build_client", lambda: builds.append(1) or client)
+    monkeypatch.setattr(
+        chroma_mcp_server, "_build_client", lambda: builds.append(1) or client
+    )
     monkeypatch.setattr(chroma_mcp_server, "_embedding_function", lambda: object())
 
     first = chroma_mcp_server._get_collection()
@@ -227,7 +247,10 @@ def test_upsert_improvement_plan_problem_uses_inventory_id(monkeypatch):
     monkeypatch.setattr(chroma_mcp_server, "_get_plan_collection", lambda: collection)
 
     result = invoke(
-        chroma_mcp_server.upsert_improvement_plan_problem, 502, "flaring at the stack", 90
+        chroma_mcp_server.upsert_improvement_plan_problem,
+        502,
+        "flaring at the stack",
+        90,
     )
 
     assert result == {"id": "502"}
@@ -240,7 +263,9 @@ def test_upsert_improvement_plan_problem_uses_inventory_id(monkeypatch):
 
 def test_query_gases_info_searches_the_pinned_collection(monkeypatch):
     """Verify that query gases info searches the pinned collection."""
-    collection = FakeCollection(result={"documents": [["biogas substitui gas natural"]]})
+    collection = FakeCollection(
+        result={"documents": [["biogas substitui gas natural"]]}
+    )
     monkeypatch.setattr(chroma_mcp_server, "_get_collection", lambda: collection)
 
     result = query(query_texts=["substituto para o metano"])
@@ -285,7 +310,9 @@ def test_query_gases_info_returns_text_and_never_raw_vectors(monkeypatch):
 def started_server(monkeypatch):
     """Start the Chroma server with external dependencies replaced."""
 
-    monkeypatch.setitem(sys.modules, "sentence_transformers", types.ModuleType("sentence_transformers"))
+    monkeypatch.setitem(
+        sys.modules, "sentence_transformers", types.ModuleType("sentence_transformers")
+    )
 
     transports = []
     monkeypatch.setattr(
@@ -297,7 +324,9 @@ def started_server(monkeypatch):
 def test_main_serves_over_stdio(monkeypatch, started_server):
     """Verify that main serves over stdio."""
     monkeypatch.setattr(chroma_mcp_server, "_get_collection", lambda: FakeCollection())
-    monkeypatch.setattr(chroma_mcp_server, "_get_plan_collection", lambda: FakeCollection())
+    monkeypatch.setattr(
+        chroma_mcp_server, "_get_plan_collection", lambda: FakeCollection()
+    )
 
     chroma_mcp_server.main()
 
@@ -332,7 +361,9 @@ def test_main_warms_the_collection_up_before_serving(monkeypatch, started_server
 
 
 @pytest.mark.parametrize("failing_getter", ["_get_collection", "_get_plan_collection"])
-def test_main_still_serves_when_the_warm_up_fails(monkeypatch, started_server, failing_getter):
+def test_main_still_serves_when_the_warm_up_fails(
+    monkeypatch, started_server, failing_getter
+):
     """Verify that main still serves when either collection warm-up fails."""
 
     def explode():
@@ -340,7 +371,9 @@ def test_main_still_serves_when_the_warm_up_fails(monkeypatch, started_server, f
         raise RuntimeError("CHROMA_API_KEY is not set in the MCP server's environment.")
 
     monkeypatch.setattr(chroma_mcp_server, "_get_collection", lambda: FakeCollection())
-    monkeypatch.setattr(chroma_mcp_server, "_get_plan_collection", lambda: FakeCollection())
+    monkeypatch.setattr(
+        chroma_mcp_server, "_get_plan_collection", lambda: FakeCollection()
+    )
     monkeypatch.setattr(chroma_mcp_server, failing_getter, explode)
 
     chroma_mcp_server.main()

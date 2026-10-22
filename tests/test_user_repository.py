@@ -32,7 +32,9 @@ MEMORY_DOCUMENT = {
 
 def build_repository(user=None, user_memory=None):
     """Build a repository backed by configurable MongoDB doubles."""
-    database = StubDatabase(user=user or StubCollection(), user_memory=user_memory or StubCollection())
+    database = StubDatabase(
+        user=user or StubCollection(), user_memory=user_memory or StubCollection()
+    )
     return Repository(database), database
 
 
@@ -78,7 +80,9 @@ def test_get_user_returns_the_user_entity():
 def test_get_user_maps_id_external_company():
     """Verify that get user maps id external company."""
     repository, _ = build_repository(
-        user=StubCollection(find_one_result={**USER_DOCUMENT, "id_external_company": 90})
+        user=StubCollection(
+            find_one_result={**USER_DOCUMENT, "id_external_company": 90}
+        )
     )
 
     assert repository.get_user(12345).id_external_company == 90
@@ -198,7 +202,9 @@ def test_get_user_raises_value_error_when_not_found():
 
 def test_get_user_wraps_database_failures_in_runtime_error():
     """Verify that get user wraps database failures in runtime error."""
-    repository, _ = build_repository(user=StubCollection(error=OSError("connection reset")))
+    repository, _ = build_repository(
+        user=StubCollection(error=OSError("connection reset"))
+    )
 
     with pytest.raises(RuntimeError, match="connection reset"):
         repository.get_user(12345)
@@ -235,7 +241,9 @@ def test_get_user_by_id_returns_none_when_not_found():
 
 def test_get_user_by_id_wraps_database_failures_in_runtime_error():
     """Verify that get user by id wraps database failures in runtime error."""
-    repository, _ = build_repository(user=StubCollection(error=OSError("connection reset")))
+    repository, _ = build_repository(
+        user=StubCollection(error=OSError("connection reset"))
+    )
 
     with pytest.raises(RuntimeError, match="connection reset"):
         repository.get_user_by_id("u1")
@@ -243,7 +251,9 @@ def test_get_user_by_id_wraps_database_failures_in_runtime_error():
 
 def test_get_user_memories_maps_every_document():
     """Verify that get user memories maps every document."""
-    repository, _ = build_repository(user_memory=StubCollection(find_result=[MEMORY_DOCUMENT]))
+    repository, _ = build_repository(
+        user_memory=StubCollection(find_result=[MEMORY_DOCUMENT])
+    )
 
     memories = repository.get_user_memories("65a8b3d6c0f8e1d7f4b2c010")
 
@@ -255,7 +265,11 @@ def test_get_user_memories_maps_every_document():
 
 def test_get_user_memories_renders_an_object_id_owner_as_text():
     """Verify that get user memories renders an object id owner as text."""
-    document = {**MEMORY_DOCUMENT, "_id": ObjectId(MEMORY_DOCUMENT["_id"]), "id_user": ObjectId(ID_USER)}
+    document = {
+        **MEMORY_DOCUMENT,
+        "_id": ObjectId(MEMORY_DOCUMENT["_id"]),
+        "id_user": ObjectId(ID_USER),
+    }
     repository, _ = build_repository(user_memory=StubCollection(find_result=[document]))
 
     memories = repository.get_user_memories(ID_USER)
@@ -285,7 +299,13 @@ def test_create_user_memory_inserts_the_document():
     created_at = datetime(2026, 7, 26, 14, 30, 0)
 
     repository.create_user_memory(
-        UserMemory(id=None, id_user="u1", field="improvement_plan", description="text", created_at=created_at)
+        UserMemory(
+            id=None,
+            id_user="u1",
+            field="improvement_plan",
+            description="text",
+            created_at=created_at,
+        )
     )
 
     document = collection.call_args("insert_one")[0][0]
@@ -299,7 +319,9 @@ def test_create_user_memory_wraps_database_failures_in_runtime_error():
     repository, _ = build_repository(user_memory=StubCollection(error=OSError("boom")))
 
     with pytest.raises(RuntimeError, match="boom"):
-        repository.create_user_memory(UserMemory(id=None, id_user="u1", field="f", description="d"))
+        repository.create_user_memory(
+            UserMemory(id=None, id_user="u1", field="f", description="d")
+        )
 
 
 def test_get_user_query_filter_targets_the_external_identifier():
@@ -384,14 +406,18 @@ def test_get_user_memories_content_query_projects_field_and_description():
 
 def test_create_user_memory_query_stores_the_owner_as_an_object_id():
     """Verify that create user memory query stores the owner as an object id."""
-    document = q.create_user_memory_query(UserMemory(id=None, id_user=ID_USER, field="f", description="d"))
+    document = q.create_user_memory_query(
+        UserMemory(id=None, id_user=ID_USER, field="f", description="d")
+    )
 
     assert document["id_user"] == ObjectId(ID_USER)
 
 
 def test_create_user_memory_query_keeps_an_owner_that_is_not_an_object_id():
     """Verify that create user memory query keeps an owner that is not an object id."""
-    document = q.create_user_memory_query(UserMemory(id=None, id_user="u1", field="f", description="d"))
+    document = q.create_user_memory_query(
+        UserMemory(id=None, id_user="u1", field="f", description="d")
+    )
 
     assert document["id_user"] == "u1"
 
@@ -402,7 +428,14 @@ def test_create_user_memory_query_keeps_explicit_timestamps():
     expires_at = datetime(2026, 9, 1, 0, 0, 0)
 
     document = q.create_user_memory_query(
-        UserMemory(id=None, id_user="u1", field="f", description="d", created_at=created_at, expires_at=expires_at)
+        UserMemory(
+            id=None,
+            id_user="u1",
+            field="f",
+            description="d",
+            created_at=created_at,
+            expires_at=expires_at,
+        )
     )
 
     assert document["created_at"] == created_at
@@ -414,7 +447,9 @@ def test_create_user_memory_query_defaults_the_expiration_window():
     created_at = datetime(2026, 7, 26, 14, 30, 0)
 
     document = q.create_user_memory_query(
-        UserMemory(id=None, id_user="u1", field="f", description="d", created_at=created_at)
+        UserMemory(
+            id=None, id_user="u1", field="f", description="d", created_at=created_at
+        )
     )
 
     assert document["expires_at"] == created_at + timedelta(days=q.USER_MEMORY_TTL_DAYS)
@@ -422,7 +457,9 @@ def test_create_user_memory_query_defaults_the_expiration_window():
 
 def test_create_user_memory_query_defaults_the_creation_timestamp():
     """Verify that create user memory query defaults the creation timestamp."""
-    document = q.create_user_memory_query(UserMemory(id=None, id_user="u1", field="f", description="d"))
+    document = q.create_user_memory_query(
+        UserMemory(id=None, id_user="u1", field="f", description="d")
+    )
 
     assert isinstance(document["created_at"], datetime)
     assert document["expires_at"] > document["created_at"]

@@ -9,7 +9,9 @@ def test_chatgpt_list_latest_schema_has_only_n():
     """Verify that chatgpt list latest schema has only n."""
     from cmd.api.acl.open_ai.catalog import get_chatgpt_tools
 
-    tool = next(t for t in get_chatgpt_tools() if t.name == "list_latest_improvement_plans")
+    tool = next(
+        t for t in get_chatgpt_tools() if t.name == "list_latest_improvement_plans"
+    )
     assert set(tool.args) == {"n"}
 
 
@@ -22,7 +24,9 @@ def test_chatgpt_ask_aeko_schema_has_input_and_optional_session_name():
 
 def test_chatgpt_query_plan_problems_schema_has_only_query():
     """Verify that chatgpt query plan problems schema has only query."""
-    tool = next(t for t in get_chatgpt_tools() if t.name == "query_improvement_plan_problems")
+    tool = next(
+        t for t in get_chatgpt_tools() if t.name == "query_improvement_plan_problems"
+    )
     assert set(tool.args) == {"query"}
 
 
@@ -40,7 +44,9 @@ def test_chatgpt_list_latest_injects_the_bound_user(monkeypatch):
         return []
 
     monkeypatch.setattr(mongo_tools, "_list_latest_improvement_plans", fake)
-    tool = next(t for t in get_chatgpt_tools() if t.name == "list_latest_improvement_plans")
+    tool = next(
+        t for t in get_chatgpt_tools() if t.name == "list_latest_improvement_plans"
+    )
     token = identity.bind_id_external_user(12345)
     try:
         tool.func(n=3)
@@ -78,7 +84,9 @@ def test_chatgpt_get_plan_hides_another_company(monkeypatch):
             return other
 
     mongo_tools.configure(improvement_plans=Plans(), users=Users(), sessions=None)
-    tool = next(t for t in get_chatgpt_tools() if t.name == "get_improvement_plan_by_inventory")
+    tool = next(
+        t for t in get_chatgpt_tools() if t.name == "get_improvement_plan_by_inventory"
+    )
     token = identity.bind_id_external_user(12345)
     try:
         with pytest.raises(ValueError, match="not found"):
@@ -139,7 +147,9 @@ def test_chatgpt_get_plan_returns_the_same_catalog_for_the_same_company(monkeypa
             return own
 
     mongo_tools.configure(improvement_plans=Plans(), users=Users(), sessions=None)
-    tool = next(t for t in get_chatgpt_tools() if t.name == "get_improvement_plan_by_inventory")
+    tool = next(
+        t for t in get_chatgpt_tools() if t.name == "get_improvement_plan_by_inventory"
+    )
     token = identity.bind_id_external_user(12345)
     try:
         result = tool.func(id_external_inventory=502)

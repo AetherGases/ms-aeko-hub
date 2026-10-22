@@ -9,6 +9,7 @@ from upload_ticket.entity import UploadTicket
 
 class Repository:
     def __init__(self, redis_client):
+        """Bind the Redis client used for upload tickets."""
         self.redis = redis_client
 
     def save(self, ticket: UploadTicket) -> None:

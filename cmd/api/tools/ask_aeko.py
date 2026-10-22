@@ -54,15 +54,9 @@ def ask_aeko(
     _assert_token_company(company_id)
     message_input = _required_text(input, "input")
     effective_session_name = (
-        None
-        if session_name is None or session_name.strip() == ""
-        else session_name
+        None if session_name is None or session_name.strip() == "" else session_name
     )
-    if (
-        _a2a is None
-        or _aeko_messenger_factory is None
-        or _aeko_session_factory is None
-    ):
+    if _a2a is None or _aeko_messenger_factory is None or _aeko_session_factory is None:
         raise RuntimeError("A2A service and Aeko factories are not configured.")
     message = A2AMessage(
         A2A_SENDER_CHATGPT,

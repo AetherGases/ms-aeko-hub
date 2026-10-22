@@ -5,16 +5,15 @@ from urllib.parse import urlparse
 
 from cmd.api.integrations.cloudinary_api import get_upload_signature
 
-from upload_ticket.entity import (
+from upload_ticket.constants import (
     STATE_CONSUMED,
     STATE_UPLOADED,
     STATE_WAITING_FOR_UPLOAD,
     VALID_FILE_TYPES,
-    UploadTicket,
+    _CLOUDINARY_ALLOWED_HOSTS,
 )
+from upload_ticket.entity import UploadTicket
 from upload_ticket.upload_ticket import IService
-
-_CLOUDINARY_ALLOWED_HOSTS = frozenset({"res.cloudinary.com"})
 
 
 def _assert_allowed_cloudinary_path(path: str) -> None:
@@ -35,6 +34,7 @@ def _assert_allowed_cloudinary_path(path: str) -> None:
 
 class Service(IService):
     def __init__(self, repository):
+        """Bind the upload-ticket cache repository."""
         self.repository = repository
 
     def create(
@@ -46,9 +46,7 @@ class Service(IService):
     ) -> UploadTicket:
         """Create a new upload ticket for an inventory file."""
         if file_type not in VALID_FILE_TYPES:
-            raise ValueError(
-                f"file_type must be one of {sorted(VALID_FILE_TYPES)}."
-            )
+            raise ValueError(f"file_type must be one of {sorted(VALID_FILE_TYPES)}.")
 
         ticket_id = secrets.token_urlsafe(32)
         ticket = UploadTicket(
@@ -129,7 +127,9 @@ class Service(IService):
         """Return inventory identifiers created from upload tickets for a user."""
         return self.repository.get_created_ids(id_external_user)
 
-    def record_created_inventory(self, id_external_user: int, inventory_id: int) -> None:
+    def record_created_inventory(
+        self, id_external_user: int, inventory_id: int
+    ) -> None:
         """Record an inventory created through ChatGPT ingest for later analysis."""
         self.repository.append_created_id(id_external_user, inventory_id)
 
@@ -140,6 +140,7 @@ class Service(IService):
         *,
         allow_consumed: bool,
     ) -> UploadTicket:
+        """Load a ticket owned by the user, or raise if it is missing."""
         stored = self.repository.get(ticket)
         if stored is None or stored.id_external_user != id_external_user:
             raise ValueError("Upload ticket not found.")

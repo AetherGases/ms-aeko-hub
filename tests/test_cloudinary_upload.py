@@ -59,7 +59,9 @@ def test_upload_signed_file_returns_only_the_secure_url(recorded_upload):
     assert "apiKey" not in result
 
 
-def test_upload_signed_file_raises_cloudinary_error_on_http_error(monkeypatch, upload_env):
+def test_upload_signed_file_raises_cloudinary_error_on_http_error(
+    monkeypatch, upload_env
+):
     """Verify that upload signed file raises cloudinary error on http error."""
     monkeypatch.setattr(
         cloudinary_upload.requests,
@@ -91,7 +93,9 @@ def test_upload_signed_file_raises_when_secure_url_is_missing(monkeypatch, uploa
         )
 
 
-def test_upload_signed_file_raises_when_the_cdn_is_never_reached(monkeypatch, upload_env):
+def test_upload_signed_file_raises_when_the_cdn_is_never_reached(
+    monkeypatch, upload_env
+):
     """Verify that upload signed file raises when the cdn is never reached."""
     monkeypatch.setattr(
         cloudinary_upload.requests,

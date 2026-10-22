@@ -15,6 +15,7 @@ def _nonempty_string(value: str, field: str) -> str:
 
 class Service(IService):
     def __init__(self, repository):
+        """Bind the user repository."""
         self.repository = repository
 
     def get_mongo_user(self, id_external_user) -> User:
@@ -69,7 +70,9 @@ class Service(IService):
         if role is None and usecase is None:
             raise ValueError("At least one of role or usecase must be supplied.")
         update_role = _nonempty_string(role, "role") if role is not None else None
-        update_usecase = _nonempty_string(usecase, "usecase") if usecase is not None else None
+        update_usecase = (
+            _nonempty_string(usecase, "usecase") if usecase is not None else None
+        )
         try:
             self.repository.update_user_profile(
                 id_external_user,

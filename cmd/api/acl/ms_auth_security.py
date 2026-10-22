@@ -4,14 +4,13 @@ import hashlib
 import json
 from typing import NamedTuple
 
+from cmd.api.acl.constants import _PROFILE_CACHE_TTL_SECONDS
 from cmd.api.integrations.profile_api import (
     ProfileError,
     get_profile,
     profile_enterprise_id,
     profile_id,
 )
-
-_PROFILE_CACHE_TTL_SECONDS = 30
 
 
 class MsAuthPrincipal(NamedTuple):
@@ -51,11 +50,13 @@ def resolve_ms_auth_access_token(access_token: str) -> MsAuthPrincipal:
 
 
 def _profile_cache_key(access_token: str) -> str:
+    """Build the Redis key used to cache a resolved principal."""
     digest = hashlib.sha256(access_token.encode("utf-8")).hexdigest()
     return f"msauth:profile:{digest}"
 
 
 def _read_cached_principal(redis_client, cache_key: str, access_token: str):
+    """Return a cached principal document, or None."""
     try:
         payload = redis_client.get(cache_key)
     except Exception:
@@ -75,7 +76,10 @@ def _read_cached_principal(redis_client, cache_key: str, access_token: str):
         return None
 
 
-def _write_cached_principal(redis_client, cache_key: str, principal: MsAuthPrincipal) -> None:
+def _write_cached_principal(
+    redis_client, cache_key: str, principal: MsAuthPrincipal
+) -> None:
+    """Store a resolved principal in Redis for the cache TTL."""
     try:
         redis_client.set(
             cache_key,
@@ -92,7 +96,9 @@ def _write_cached_principal(redis_client, cache_key: str, principal: MsAuthPrinc
         return
 
 
-def resolve_ms_auth_access_token_cached(access_token: str, redis_client=None) -> MsAuthPrincipal:
+def resolve_ms_auth_access_token_cached(
+    access_token: str, redis_client=None
+) -> MsAuthPrincipal:
     """Return a Redis-cached principal or validate the token with ms-auth."""
     token = (access_token or "").strip()
     if not token:

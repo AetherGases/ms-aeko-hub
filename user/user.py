@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 from user.entity import User, UserMemory
 
+
 class IRepository(ABC):
     @abstractmethod
     def get_user(self, id_external_user) -> User:
@@ -61,6 +62,7 @@ class IRepository(ABC):
     def set_id_external_company(self, id_user: str, id_external_company: int) -> None:
         """Persist the company identifier on the user document."""
         pass
+
 
 class IService(ABC):
     @abstractmethod

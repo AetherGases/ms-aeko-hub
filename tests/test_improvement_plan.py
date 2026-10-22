@@ -8,7 +8,11 @@ import pytest
 
 from improvement_plan.database import query as q
 from improvement_plan.database.repository import Repository, improvement_plan_from_data
-from improvement_plan.entity import ExtractedInventory, ImprovementPlan, InventoryEmission
+from improvement_plan.entity import (
+    ExtractedInventory,
+    ImprovementPlan,
+    InventoryEmission,
+)
 from improvement_plan.improvement_plan import (
     IRepository,
     IService,
@@ -28,7 +32,9 @@ ID_USER = "u1"
 ID_EXTERNAL_USER = 12345
 ID_INVENTORY = 502
 
-INVENTORY_MARKDOWN = "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+INVENTORY_MARKDOWN = (
+    "## Escopo 1\n\n| Fonte | tCO2e |\n| --- | --- |\n| Caldeira | 12400 |"
+)
 
 GASES = [{"id": 1, "name": "CO2"}]
 SCOPES = [{"id": 1, "name": "Escopo 1"}]
@@ -44,10 +50,17 @@ PLAN_DOCUMENT = {
     "updated_at": UPDATED_AT,
 }
 
-USER = User(id=ID_USER, id_external_user=ID_EXTERNAL_USER, role="analyst", usecase="report_generation")
+USER = User(
+    id=ID_USER,
+    id_external_user=ID_EXTERNAL_USER,
+    role="analyst",
+    usecase="report_generation",
+)
 
 
-def previous_plan(id_external_inventory, defined_problem, method, reasoning, updated_at=UPDATED_AT):
+def previous_plan(
+    id_external_inventory, defined_problem, method, reasoning, updated_at=UPDATED_AT
+):
     """Build a previous improvement plan for context assertions."""
     return ImprovementPlan(
         id=f"plan-{id_external_inventory}",
@@ -164,12 +177,18 @@ class StubAnalyzer:
         """Record the analysis context supplied by the service."""
         self.context = context
 
-    def analyze(self, inventory, *, id_external_inventory, id_request, gases, scopes, categories):
+    def analyze(
+        self, inventory, *, id_external_inventory, id_request, gases, scopes, categories
+    ):
         """Record the inventory analysis call and return or raise its scripted result."""
-        self.analyzed.append((inventory, id_external_inventory, id_request, gases, scopes, categories))
+        self.analyzed.append(
+            (inventory, id_external_inventory, id_request, gases, scopes, categories)
+        )
         if self.error is not None:
             raise self.error
-        return StubAnalysis(self.plan, StubMetrics(id_request=id_request), self.inventory)
+        return StubAnalysis(
+            self.plan, StubMetrics(id_request=id_request), self.inventory
+        )
 
 
 class StubAnalyzerFactory:
@@ -200,7 +219,9 @@ class StubUserService:
     def get_mongo_user(self, id_external_user):
         """Retrieve the stored user matching an external identifier."""
         if self.user is None:
-            raise ValueError(f"User with id_external_user {id_external_user} not found.")
+            raise ValueError(
+                f"User with id_external_user {id_external_user} not found."
+            )
         return self.user
 
     def get_mongo_user_or_create(
@@ -256,9 +277,18 @@ def build_service(repository=None):
     return Service(repository or StubPlanRepository())
 
 
-def run(repository=None, analyzers=None, users=None, id_external_inventory=ID_INVENTORY,
-        inventory=INVENTORY_MARKDOWN, id_external_user=ID_EXTERNAL_USER,
-        id_external_company=90, gases=None, scopes=None, categories=None):
+def run(
+    repository=None,
+    analyzers=None,
+    users=None,
+    id_external_inventory=ID_INVENTORY,
+    inventory=INVENTORY_MARKDOWN,
+    id_external_user=ID_EXTERNAL_USER,
+    id_external_company=90,
+    gases=None,
+    scopes=None,
+    categories=None,
+):
     """Execute the scenario under test."""
     service = build_service(repository)
     return service.input_inventory(
@@ -307,7 +337,11 @@ def test_extracted_inventory_defaults_to_empty_emissions():
     """Verify that extracted inventory defaults to empty emissions."""
     inventory = ExtractedInventory()
 
-    assert (inventory.description, inventory.start_period, inventory.end_period) == (None, None, None)
+    assert (inventory.description, inventory.start_period, inventory.end_period) == (
+        None,
+        None,
+        None,
+    )
     assert inventory.emissions == []
 
 
@@ -346,7 +380,9 @@ def test_the_inventory_is_not_resolved_through_another_service():
     """Verify that the inventory is not resolved through another service."""
     from pathlib import Path
 
-    assert not (Path(__file__).resolve().parents[1] / "improvement_plan" / "integration").exists()
+    assert not (
+        Path(__file__).resolve().parents[1] / "improvement_plan" / "integration"
+    ).exists()
 
 
 def test_get_by_id_external_inventory_returns_the_plan():
@@ -364,7 +400,9 @@ def test_get_by_id_external_inventory_returns_the_plan():
 
 def test_get_by_id_external_inventory_queries_by_the_external_inventory():
     """Verify that get by id external inventory queries by the external inventory."""
-    repository, collection = build_repository(StubCollection(find_one_result=PLAN_DOCUMENT))
+    repository, collection = build_repository(
+        StubCollection(find_one_result=PLAN_DOCUMENT)
+    )
 
     repository.get_by_id_external_inventory(1)
 
@@ -389,7 +427,9 @@ def test_get_by_id_external_inventory_wraps_database_failures():
 
 def test_create_stores_the_plan_and_returns_it_with_an_identifier():
     """Verify that create stores the plan and returns it with an identifier."""
-    repository, collection = build_repository(StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c020"))
+    repository, collection = build_repository(
+        StubCollection(inserted_id="65a8b3d6c0f8e1d7f4b2c020")
+    )
     plan = ImprovementPlan(
         id_external_inventory=1,
         defined_problem="problem",
@@ -440,7 +480,9 @@ def test_replace_wraps_database_failures():
 
 def test_list_latest_sorts_limits_and_filters_in_the_find():
     """Verify that list latest sorts limits and filters in the find."""
-    repository, collection = build_repository(StubCollection(find_result=[PLAN_DOCUMENT]))
+    repository, collection = build_repository(
+        StubCollection(find_result=[PLAN_DOCUMENT])
+    )
 
     plans = repository.list_latest(3, 90)
 
@@ -555,7 +597,9 @@ def test_create_improvement_plan_query_maps_every_field_the_flow_persists():
 
 def test_create_omits_id_external_company_when_unset():
     """Verify that create omits id external company when unset."""
-    plan = ImprovementPlan(id_external_inventory=1, defined_problem="p", method="m", reasoning="r")
+    plan = ImprovementPlan(
+        id_external_inventory=1, defined_problem="p", method="m", reasoning="r"
+    )
     document = q.create_improvement_plan_query(plan)
     assert "id_external_company" not in document
 
@@ -669,7 +713,12 @@ def test_the_current_plan_of_the_inventory_becomes_context():
     """Verify that the current plan of the inventory becomes context."""
     analyzers = StubAnalyzerFactory()
     repository = StubPlanRepository(
-        existing=previous_plan(ID_INVENTORY, "boiler still burning", "swap for heat pumps", "scope 1 dominates")
+        existing=previous_plan(
+            ID_INVENTORY,
+            "boiler still burning",
+            "swap for heat pumps",
+            "scope 1 dominates",
+        )
     )
 
     run(repository=repository, analyzers=analyzers)
@@ -794,7 +843,9 @@ def test_a_successful_reanalysis_replaces_the_plan():
 
     run(repository=repository)
 
-    assert [call[0] for call in repository.calls if call[0] in {"create", "replace"}] == ["replace"]
+    assert [
+        call[0] for call in repository.calls if call[0] in {"create", "replace"}
+    ] == ["replace"]
     (plan,) = [call[1] for call in repository.calls if call[0] == "replace"]
     assert plan.defined_problem == "high scope 1 emissions"
     assert plan.id == existing.id
@@ -808,10 +859,14 @@ def test_a_failing_analysis_does_not_replace_the_plan():
     with pytest.raises(RuntimeError, match="coordinator never produced the plan"):
         run(
             repository=repository,
-            analyzers=StubAnalyzerFactory(error=RuntimeError("coordinator never produced the plan")),
+            analyzers=StubAnalyzerFactory(
+                error=RuntimeError("coordinator never produced the plan")
+            ),
         )
 
-    assert [call[0] for call in repository.calls if call[0] in {"create", "replace"}] == []
+    assert [
+        call[0] for call in repository.calls if call[0] in {"create", "replace"}
+    ] == []
     assert repository.existing is existing
 
 
@@ -844,7 +899,11 @@ def test_the_structured_inventory_is_returned():
 def test_a_failing_analyzer_is_surfaced():
     """Verify that a failing analyzer is surfaced."""
     with pytest.raises(RuntimeError, match="coordinator never produced the plan"):
-        run(analyzers=StubAnalyzerFactory(error=RuntimeError("coordinator never produced the plan")))
+        run(
+            analyzers=StubAnalyzerFactory(
+                error=RuntimeError("coordinator never produced the plan")
+            )
+        )
 
 
 @pytest.fixture
@@ -878,7 +937,9 @@ def test_an_analysis_records_what_it_cost(recorded_metrics):
     finally:
         unbind_id_request(token)
 
-    assert [metrics.id_request for metrics in recorded_metrics] == ["65a8b3d6c0f8e1d7f4b2c0aa"]
+    assert [metrics.id_request for metrics in recorded_metrics] == [
+        "65a8b3d6c0f8e1d7f4b2c0aa"
+    ]
     assert recorded_metrics[0].flow == "analytical"
 
 
@@ -909,7 +970,9 @@ def test_an_analysis_records_the_user_company():
 def test_an_analysis_that_raised_records_the_tracking_it_carried_out(recorded_metrics):
     """Verify that an analysis that raised records the tracking it carried out."""
     error = RuntimeError("coordinator never produced the plan")
-    error.aeko_metrics = StubMetrics(error_description="MalformedAgentOutputError: no sections")
+    error.aeko_metrics = StubMetrics(
+        error_description="MalformedAgentOutputError: no sections"
+    )
 
     with pytest.raises(RuntimeError):
         run(analyzers=StubAnalyzerFactory(error=error))
@@ -929,6 +992,7 @@ def test_a_failure_carrying_no_tracking_records_nothing(recorded_metrics):
 
 def test_a_recording_that_fails_never_takes_the_analysis_down():
     """Verify that a recording that fails never takes the analysis down."""
+
     def explode(metrics):
         """Raise the configured failure to exercise error handling."""
         raise RuntimeError("mongo is down")
@@ -948,8 +1012,15 @@ def test_input_inventory_indexes_defined_problem_after_create():
     service = Service(repository, chroma_indexer=indexer)
 
     service.input_inventory(
-        ID_INVENTORY, INVENTORY_MARKDOWN, ID_EXTERNAL_USER, 90,
-        GASES, SCOPES, CATEGORIES, StubUserService(), StubAnalyzerFactory(),
+        ID_INVENTORY,
+        INVENTORY_MARKDOWN,
+        ID_EXTERNAL_USER,
+        90,
+        GASES,
+        SCOPES,
+        CATEGORIES,
+        StubUserService(),
+        StubAnalyzerFactory(),
     )
 
     assert indexer.calls == [(ID_INVENTORY, "high scope 1 emissions", 90)]
@@ -964,8 +1035,15 @@ def test_input_inventory_indexes_defined_problem_after_replace():
     service = Service(repository, chroma_indexer=indexer)
 
     service.input_inventory(
-        ID_INVENTORY, INVENTORY_MARKDOWN, ID_EXTERNAL_USER, 90,
-        GASES, SCOPES, CATEGORIES, StubUserService(), StubAnalyzerFactory(),
+        ID_INVENTORY,
+        INVENTORY_MARKDOWN,
+        ID_EXTERNAL_USER,
+        90,
+        GASES,
+        SCOPES,
+        CATEGORIES,
+        StubUserService(),
+        StubAnalyzerFactory(),
     )
 
     assert indexer.calls == [(ID_INVENTORY, "high scope 1 emissions", 90)]
@@ -979,6 +1057,13 @@ def test_input_inventory_wraps_indexer_failure():
 
     with pytest.raises(RuntimeError, match="upsert_improvement_plan_problem"):
         service.input_inventory(
-            ID_INVENTORY, INVENTORY_MARKDOWN, ID_EXTERNAL_USER, 90,
-            GASES, SCOPES, CATEGORIES, StubUserService(), StubAnalyzerFactory(),
+            ID_INVENTORY,
+            INVENTORY_MARKDOWN,
+            ID_EXTERNAL_USER,
+            90,
+            GASES,
+            SCOPES,
+            CATEGORIES,
+            StubUserService(),
+            StubAnalyzerFactory(),
         )

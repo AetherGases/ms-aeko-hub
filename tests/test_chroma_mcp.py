@@ -117,14 +117,18 @@ def cloud_env(monkeypatch):
 
 def configured_child(monkeypatch, *args):
     """Build the configured Chroma child process settings."""
-    monkeypatch.setattr(chroma_mcp, "MultiServerMCPClient", RecordingMultiServerMCPClient)
+    monkeypatch.setattr(
+        chroma_mcp, "MultiServerMCPClient", RecordingMultiServerMCPClient
+    )
     chroma_mcp._configure_mcp_client(*args)
     return RecordingMultiServerMCPClient.instances[-1].config["chroma"]
 
 
 def test_configure_mcp_client_spawns_the_projects_own_server_over_stdio(monkeypatch):
     """Verify that configure mcp client spawns the projects own server over stdio."""
-    config = configured_child(monkeypatch, "explicit-tenant", "explicit-database", "explicit-key")
+    config = configured_child(
+        monkeypatch, "explicit-tenant", "explicit-database", "explicit-key"
+    )
 
     assert config["transport"] == "stdio"
     assert config["command"] == sys.executable
@@ -136,9 +140,13 @@ def test_the_configured_server_script_actually_exists():
     assert chroma_mcp.CHROMA_MCP_SERVER_SCRIPT.is_file()
 
 
-def test_configure_mcp_client_hands_the_credentials_to_the_child_environment(monkeypatch):
+def test_configure_mcp_client_hands_the_credentials_to_the_child_environment(
+    monkeypatch,
+):
     """Verify that configure mcp client hands the credentials to the child environment."""
-    config = configured_child(monkeypatch, "explicit-tenant", "explicit-database", "explicit-key")
+    config = configured_child(
+        monkeypatch, "explicit-tenant", "explicit-database", "explicit-key"
+    )
 
     assert config["env"]["CHROMA_TENANT"] == "explicit-tenant"
     assert config["env"]["CHROMA_DATABASE"] == "explicit-database"
@@ -147,7 +155,9 @@ def test_configure_mcp_client_hands_the_credentials_to_the_child_environment(mon
 
 def test_configure_mcp_client_keeps_the_api_key_out_of_argv(monkeypatch):
     """Verify that configure mcp client keeps the api key out of argv."""
-    config = configured_child(monkeypatch, "explicit-tenant", "explicit-database", "explicit-key")
+    config = configured_child(
+        monkeypatch, "explicit-tenant", "explicit-database", "explicit-key"
+    )
 
     assert "explicit-key" not in config["args"]
 
@@ -157,7 +167,9 @@ def test_configure_mcp_client_passes_the_model_cache_location_through(monkeypatc
     monkeypatch.setenv("HF_HOME", "/models/hf")
     monkeypatch.setenv("PATH", "/usr/local/bin:/usr/bin")
 
-    config = configured_child(monkeypatch, "explicit-tenant", "explicit-database", "explicit-key")
+    config = configured_child(
+        monkeypatch, "explicit-tenant", "explicit-database", "explicit-key"
+    )
 
     assert config["env"]["HF_HOME"] == "/models/hf"
     assert config["env"]["PATH"] == "/usr/local/bin:/usr/bin"
@@ -167,7 +179,9 @@ def test_configure_mcp_client_omits_passthrough_variables_that_are_unset(monkeyp
     """Verify that configure mcp client omits passthrough variables that are unset."""
     monkeypatch.delenv("SENTENCE_TRANSFORMERS_HOME", raising=False)
 
-    config = configured_child(monkeypatch, "explicit-tenant", "explicit-database", "explicit-key")
+    config = configured_child(
+        monkeypatch, "explicit-tenant", "explicit-database", "explicit-key"
+    )
 
     assert "SENTENCE_TRANSFORMERS_HOME" not in config["env"]
 
@@ -177,7 +191,9 @@ def test_configure_mcp_client_forwards_server_configuration(monkeypatch):
     monkeypatch.setenv("EMBEDDING_MODEL", "configured-embedding-model")
     monkeypatch.setenv("DEFAULT_RESULT_COUNT", "3")
     monkeypatch.setenv("QUERY_INCLUDE", '["documents"]')
-    config = configured_child(monkeypatch, "explicit-tenant", "explicit-database", "explicit-key")
+    config = configured_child(
+        monkeypatch, "explicit-tenant", "explicit-database", "explicit-key"
+    )
     assert config["env"]["EMBEDDING_MODEL"] == "configured-embedding-model"
     assert config["env"]["DEFAULT_RESULT_COUNT"] == "3"
     assert config["env"]["QUERY_INCLUDE"] == '["documents"]'
@@ -192,22 +208,32 @@ def test_configure_mcp_client_falls_back_to_the_chroma_env_vars(monkeypatch, clo
     assert config["env"]["CHROMA_API_KEY"] == "key-from-env"
 
 
-@pytest.mark.parametrize("missing", ["CHROMA_TENANT", "CHROMA_DATABASE", "CHROMA_API_KEY"])
-def test_configure_mcp_client_raises_naming_the_missing_variable(monkeypatch, cloud_env, missing):
+@pytest.mark.parametrize(
+    "missing", ["CHROMA_TENANT", "CHROMA_DATABASE", "CHROMA_API_KEY"]
+)
+def test_configure_mcp_client_raises_naming_the_missing_variable(
+    monkeypatch, cloud_env, missing
+):
     """Verify that configure mcp client raises naming the missing variable."""
-    monkeypatch.setattr(chroma_mcp, "MultiServerMCPClient", RecordingMultiServerMCPClient)
+    monkeypatch.setattr(
+        chroma_mcp, "MultiServerMCPClient", RecordingMultiServerMCPClient
+    )
     monkeypatch.delenv(missing, raising=False)
 
     with pytest.raises(RuntimeError, match=missing):
         chroma_mcp._configure_mcp_client()
 
 
-def test_query_gases_info_invokes_the_servers_query_tool_with_the_search_text(monkeypatch):
+def test_query_gases_info_invokes_the_servers_query_tool_with_the_search_text(
+    monkeypatch,
+):
     """Verify that query gases info invokes the servers query tool with the search text."""
     query_tool = FakeMCPTool(
         "query_gases_info", result={"documents": [["metano pode virar biogas"]]}
     )
-    monkeypatch.setattr(chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool]))
+    monkeypatch.setattr(
+        chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool])
+    )
 
     result = chroma_mcp._query_gases_info("substituto para o metano")
 
@@ -218,17 +244,23 @@ def test_query_gases_info_invokes_the_servers_query_tool_with_the_search_text(mo
 def test_query_gases_info_never_lets_the_agent_name_a_collection(monkeypatch):
     """Verify that query gases info never lets the agent name a collection."""
     query_tool = FakeMCPTool("query_gases_info", result={})
-    monkeypatch.setattr(chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool]))
+    monkeypatch.setattr(
+        chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool])
+    )
 
     chroma_mcp._query_gases_info("qualquer coisa")
 
     assert set(query_tool.calls[-1]) == {"query_texts"}
 
 
-def test_query_gases_info_raises_a_clear_error_when_the_server_has_no_query_tool(monkeypatch):
+def test_query_gases_info_raises_a_clear_error_when_the_server_has_no_query_tool(
+    monkeypatch,
+):
     """Verify that query gases info raises a clear error when the server has no query tool."""
     other_tool = FakeMCPTool("something_else")
-    monkeypatch.setattr(chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([other_tool]))
+    monkeypatch.setattr(
+        chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([other_tool])
+    )
 
     with pytest.raises(LookupError, match="query_gases_info"):
         chroma_mcp._query_gases_info("qualquer coisa")
@@ -237,7 +269,9 @@ def test_query_gases_info_raises_a_clear_error_when_the_server_has_no_query_tool
 def test_query_gases_info_never_reaches_the_server_with_an_empty_query(monkeypatch):
     """Verify that query gases info never reaches the server with an empty query."""
     query_tool = FakeMCPTool("query_gases_info", result={})
-    monkeypatch.setattr(chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool]))
+    monkeypatch.setattr(
+        chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool])
+    )
 
     with pytest.raises(ValueError, match="non-empty"):
         chroma_mcp._query_gases_info("   ")
@@ -247,7 +281,9 @@ def test_query_gases_info_never_reaches_the_server_with_an_empty_query(monkeypat
 
 def test_parse_query_wraps_a_single_string():
     """Verify that parse query wraps a single string."""
-    assert chroma_mcp._parse_query("gases de efeito estufa") == ["gases de efeito estufa"]
+    assert chroma_mcp._parse_query("gases de efeito estufa") == [
+        "gases de efeito estufa"
+    ]
 
 
 def test_parse_query_passes_a_list_of_strings_through():
@@ -287,7 +323,9 @@ def test_get_gases_info_tools_returns_a_single_query_tool():
 def test_get_gases_info_tools_entry_is_backed_by_query_gases_info(monkeypatch):
     """Verify that get gases info tools entry is backed by query gases info."""
     query_tool = FakeMCPTool("query_gases_info", result="gases info results")
-    monkeypatch.setattr(chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool]))
+    monkeypatch.setattr(
+        chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([query_tool])
+    )
 
     tool = chroma_mcp.get_gases_info_tools()[0]
 
@@ -363,14 +401,22 @@ CATALOG_PLAN = {
 }
 
 
-def bind_plan_query(monkeypatch, result=None, tool_name="query_improvement_plan_problems"):
+def bind_plan_query(
+    monkeypatch, result=None, tool_name="query_improvement_plan_problems"
+):
     """Point the Chroma session at one scripted MCP tool."""
-    tool = FakeMCPTool(tool_name, result=result if result is not None else PLAN_QUERY_RESULT)
-    monkeypatch.setattr(chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([tool]))
+    tool = FakeMCPTool(
+        tool_name, result=result if result is not None else PLAN_QUERY_RESULT
+    )
+    monkeypatch.setattr(
+        chroma_mcp, "_configure_mcp_client", lambda: FakeMCPClient([tool])
+    )
     return tool
 
 
-def test_query_improvement_plan_problems_injects_the_users_company_and_hides_where(monkeypatch):
+def test_query_improvement_plan_problems_injects_the_users_company_and_hides_where(
+    monkeypatch,
+):
     """Verify that query improvement plan problems injects the users company and hides where."""
     query_tool = bind_plan_query(monkeypatch)
     chroma_mcp.configure(users=StubUserService(), improvement_plans=StubPlanService())
@@ -449,7 +495,9 @@ def test_query_improvement_plan_problems_rejects_a_user_without_company(monkeypa
     assert query_tool.calls == []
 
 
-def test_query_improvement_plan_problems_raises_when_the_mcp_tool_is_missing(monkeypatch):
+def test_query_improvement_plan_problems_raises_when_the_mcp_tool_is_missing(
+    monkeypatch,
+):
     """Verify that query improvement plan problems raises when the mcp tool is missing."""
     bind_plan_query(monkeypatch, tool_name="query_gases_info")
     chroma_mcp.configure(users=StubUserService(), improvement_plans=StubPlanService())
@@ -467,11 +515,13 @@ def test_upsert_improvement_plan_problem_calls_mcp(monkeypatch):
 
     chroma_mcp._upsert_improvement_plan_problem(502, "flaring", 90)
 
-    assert upsert_tool.calls == [{
-        "id_external_inventory": 502,
-        "defined_problem": "flaring",
-        "id_external_company": 90,
-    }]
+    assert upsert_tool.calls == [
+        {
+            "id_external_inventory": 502,
+            "defined_problem": "flaring",
+            "id_external_company": 90,
+        }
+    ]
 
 
 def test_get_improvement_plan_problem_tools_does_not_expose_upsert():

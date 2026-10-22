@@ -17,7 +17,9 @@ class ICacheRepository(ABC):
         pass
 
     @abstractmethod
-    def set_window(self, id_session: str, id_user: str, messages: list[Message]) -> None:
+    def set_window(
+        self, id_session: str, id_user: str, messages: list[Message]
+    ) -> None:
         """Persist the current conversation window for a session."""
         pass
 

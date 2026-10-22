@@ -1,6 +1,10 @@
 """Coordinate domain operations for improvement plans."""
 
-from improvement_plan.entity import ExtractedInventory, ImprovementPlan, InventoryEmission
+from improvement_plan.entity import (
+    ExtractedInventory,
+    ImprovementPlan,
+    InventoryEmission,
+)
 from improvement_plan.improvement_plan import (
     IRepository,
     IService,
@@ -12,6 +16,7 @@ from user.user import IService as IUserService, UserMemory
 
 class Service(IService):
     def __init__(self, repository: IRepository, chroma_indexer=None):
+        """Bind the improvement-plan repository."""
         self.repository = repository
         self.chroma_indexer = chroma_indexer
 
@@ -45,7 +50,9 @@ class Service(IService):
     ) -> ExtractedInventory:
         """Analyze inventory Markdown with the current plan as context, then store the new plan."""
         if id_external_inventory is None:
-            raise ValueError("id_external_inventory is required to analyze an inventory.")
+            raise ValueError(
+                "id_external_inventory is required to analyze an inventory."
+            )
         if not inventory or not str(inventory).strip():
             raise ValueError("inventory is required to analyze an inventory.")
 
@@ -120,20 +127,24 @@ class Service(IService):
                     improvement_plan.id_external_company,
                 )
             except Exception as exc:
-                raise RuntimeError(f"Error indexing improvement plan problem: {exc}") from exc
+                raise RuntimeError(
+                    f"Error indexing improvement plan problem: {exc}"
+                ) from exc
         user_service.create_user_memory(
             UserMemory(
                 id=None,
                 id_user=user.id,
                 field="improvement_plan",
-                description=str(improvement_plan)
+                description=str(improvement_plan),
             )
         )
 
         return extracted_inventory
 
 
-def _current_plan(repository: IRepository, id_external_inventory: int) -> ImprovementPlan | None:
+def _current_plan(
+    repository: IRepository, id_external_inventory: int
+) -> ImprovementPlan | None:
     """Return the stored plan for an inventory, or None when that inventory has none yet."""
     try:
         return repository.get_by_id_external_inventory(id_external_inventory)
@@ -141,7 +152,17 @@ def _current_plan(repository: IRepository, id_external_inventory: int) -> Improv
         return None
 
 
-def _analyze(analyzer, inventory_markdown: str, id_external_inventory: int, id_request: str, gases, scopes, categories, id_external_user, id_external_company):
+def _analyze(
+    analyzer,
+    inventory_markdown: str,
+    id_external_inventory: int,
+    id_request: str,
+    gases,
+    scopes,
+    categories,
+    id_external_user,
+    id_external_company,
+):
     """Analyze an inventory and record metrics attached to any raised exception."""
 
     try:
@@ -170,7 +191,7 @@ def improvement_plan_from_aeko_plan(plan) -> ImprovementPlan:
         defined_problem=plan.defined_problem,
         method=plan.method,
         reasoning=plan.reasoning,
-        updated_at=None
+        updated_at=None,
     )
 
 

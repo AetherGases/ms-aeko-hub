@@ -31,7 +31,9 @@ class RecordingRequest:
     """Captures every call `requests.request` would have made."""
 
     def __init__(self, response=None, error=None):
-        self.response = response if response is not None else FakeResponse(payload={"ok": True})
+        self.response = (
+            response if response is not None else FakeResponse(payload={"ok": True})
+        )
         self.error = error
         self.calls = []
 
@@ -90,7 +92,9 @@ def test_get_upload_signature_authenticates_with_a_bearer_token(recorded_request
     """Verify that get upload signature authenticates with the bound user Bearer."""
     cloudinary_api.get_upload_signature("XLSX")
 
-    assert recorded_request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
+    assert (
+        recorded_request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
+    )
     assert recorded_request.calls[0]["headers"]["Authorization"] != "Bearer cloud-key"
 
 
@@ -124,7 +128,9 @@ def test_get_upload_signature_uses_bound_user_bearer_not_service_api_key(
     "env_var",
     ["CLOUDINARY_MS_BASE_URL", "MS_HTTP_TIMEOUT"],
 )
-def test_get_upload_signature_raises_naming_a_missing_env_var(monkeypatch, cloudinary_env, env_var):
+def test_get_upload_signature_raises_naming_a_missing_env_var(
+    monkeypatch, cloudinary_env, env_var
+):
     """Verify that get upload signature raises naming a missing env var."""
     monkeypatch.delenv(env_var, raising=False)
 
@@ -165,7 +171,9 @@ def test_get_upload_signature_raises_cloudinary_error_on_non_object_json_error_b
     assert "400" in str(error.value)
 
 
-def test_get_upload_signature_raises_when_the_service_is_never_reached(monkeypatch, cloudinary_env):
+def test_get_upload_signature_raises_when_the_service_is_never_reached(
+    monkeypatch, cloudinary_env
+):
     """Verify that get upload signature raises when the service is never reached."""
     monkeypatch.setattr(
         cloudinary_api.requests,

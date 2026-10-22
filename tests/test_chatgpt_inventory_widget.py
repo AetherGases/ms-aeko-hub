@@ -24,8 +24,10 @@ def test_analyze_inventory_declares_widget_and_file_params():
 
 def test_inventory_widget_html_is_a_self_contained_form():
     """Verify that inventory widget html is a self contained form."""
-    html = Path("cmd/api/acl/open_ai/widgets/analyze_inventory.html").read_text(encoding="utf-8")
-    assert 'name="name"' in html or "id=\"name\"" in html
+    html = Path("cmd/api/acl/open_ai/widgets/analyze_inventory.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'name="name"' in html or 'id="name"' in html
     assert "IMAGE" in html and "XLSX" in html
     assert 'type="file"' in html
     assert "uploadFile" in html
