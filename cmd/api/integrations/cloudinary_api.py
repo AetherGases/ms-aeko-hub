@@ -1,16 +1,19 @@
-"""Frozen HTTP client for the Cloudinary microservice upload-signature endpoint."""
+"""Cloudinary microservice signatures and signed uploads to the Cloudinary CDN."""
 
 import os
 from typing import Any
 
 import requests
 
-from cmd.api.acl.open_ai.identity import current_ms_auth_access_token
-from cmd.api.integrations.constants import CLOUDINARY_UPLOAD_SIGNATURE_PATH
+from cmd.api.integrations.constants import (
+    AUTHENTICATION_KEY_HEADER,
+    CLOUDINARY_UPLOAD_SIGNATURE_PATH,
+    INTERNAL_AUTHENTICATION_KEY_ENV,
+)
 
 
 class CloudinaryError(RuntimeError):
-    """Raised when a call to the Cloudinary microservice cannot be completed."""
+    """Raised when a call to Cloudinary or its microservice cannot be completed."""
 
 
 def _base_url() -> str:
@@ -27,7 +30,7 @@ def _base_url() -> str:
 
 
 def _timeout() -> float:
-    """Resolve the shared microservice HTTP timeout from the environment."""
+    """Resolve the shared HTTP timeout from the environment."""
 
     value = os.environ.get("MS_HTTP_TIMEOUT", "")
 
@@ -37,6 +40,19 @@ def _timeout() -> float:
         )
 
     return float(value)
+
+
+def _internal_authentication_key() -> str:
+    """Resolve the shared internal authentication-key header value."""
+
+    value = os.environ.get(INTERNAL_AUTHENTICATION_KEY_ENV, "")
+
+    if value == "":
+        raise RuntimeError(
+            f"{INTERNAL_AUTHENTICATION_KEY_ENV} is not set. Please set it in the environment."
+        )
+
+    return value
 
 
 def _error_detail(response: Any) -> str:
@@ -58,10 +74,10 @@ def _error_detail(response: Any) -> str:
     )
 
 
-def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -> Any:
+def _request(method: str, url: str, **kwargs: Any) -> Any:
     """Send a Cloudinary microservice HTTP request and translate transport and status errors."""
 
-    headers = {"Authorization": f"Bearer {current_ms_auth_access_token()}"}
+    headers = {AUTHENTICATION_KEY_HEADER: _internal_authentication_key()}
 
     try:
         response = requests.request(
@@ -87,8 +103,54 @@ def _request(method: str, url: str, api_key: str | None = None, **kwargs: Any) -
         ) from exc
 
 
-def get_upload_signature(file_type: str, *, api_key: str | None = None) -> dict:
-    """Return the Cloudinary upload signature for the file type as the bound ms-auth user."""
+def get_upload_signature(file_type: str) -> dict:
+    """Return the Cloudinary upload signature for the file type using the internal key."""
 
     url = f"{_base_url()}{CLOUDINARY_UPLOAD_SIGNATURE_PATH}"
-    return _request("GET", url, api_key=api_key, params={"fileType": file_type})
+    return _request("GET", url, params={"fileType": file_type})
+
+
+def upload_signed_file(
+    file_bytes: bytes,
+    file_name: str,
+    signature_payload: dict,
+) -> str:
+    """Upload file bytes to Cloudinary and return only the secure URL."""
+
+    cloud_name = signature_payload["cloudName"]
+    resource_type = signature_payload["cloudinaryResourceType"]
+    url = f"https://api.cloudinary.com/v1_1/{cloud_name}/{resource_type}/upload"
+    data = {
+        "api_key": signature_payload["apiKey"],
+        "timestamp": signature_payload["timestamp"],
+        "signature": signature_payload["signature"],
+        "folder": signature_payload["cloudinaryFolder"],
+    }
+    files = {"file": (file_name, file_bytes)}
+
+    try:
+        response = requests.request(
+            "POST",
+            url,
+            data=data,
+            files=files,
+            timeout=_timeout(),
+        )
+    except requests.RequestException as exc:
+        raise CloudinaryError(f"Could not reach Cloudinary at {url}: {exc}") from exc
+
+    if response.status_code >= 400:
+        raise CloudinaryError(f"Cloudinary answered {response.status_code} for {url}.")
+
+    try:
+        payload: Any = response.json()
+    except ValueError as exc:
+        raise CloudinaryError(
+            f"Cloudinary answered {response.status_code} for {url} with "
+            f"something that is not JSON."
+        ) from exc
+
+    if not isinstance(payload, dict) or not payload.get("secure_url"):
+        raise CloudinaryError("Cloudinary response did not include secure_url.")
+
+    return payload["secure_url"]

@@ -1,6 +1,8 @@
 """Verify cloudinary microservice client behavior and error handling."""
 
+import ast
 import json
+from pathlib import Path
 
 import pytest
 import requests
@@ -10,6 +12,7 @@ from cmd.api.acl.open_ai.identity import (
     reset_ms_auth_access_token,
 )
 from cmd.api.integrations import cloudinary_api
+from cmd.api.integrations.constants import INTERNAL_AUTHENTICATION_KEY_ENV
 
 
 class FakeResponse:
@@ -56,7 +59,7 @@ SIGNATURE_PAYLOAD = {
 
 @pytest.fixture(autouse=True)
 def bound_ms_auth_token():
-    """Bind the signed-in user's ms-auth access token for Cloudinary calls."""
+    """Bind a user token so Cloudinary calls can prove they ignore it."""
     token = bind_ms_auth_access_token("ms-user-token")
     yield "ms-user-token"
     reset_ms_auth_access_token(token)
@@ -66,7 +69,7 @@ def bound_ms_auth_token():
 def cloudinary_env(monkeypatch):
     """Set test Cloudinary microservice environment variables."""
     monkeypatch.setenv("CLOUDINARY_MS_BASE_URL", "http://cloudinary.test")
-    monkeypatch.setenv("CLOUDINARY_MS_API_KEY", "cloud-key")
+    monkeypatch.setenv(INTERNAL_AUTHENTICATION_KEY_ENV, "internal-token")
     monkeypatch.setenv("MS_HTTP_TIMEOUT", "60")
 
 
@@ -88,14 +91,15 @@ def test_get_upload_signature_gets_the_upload_signature_endpoint(recorded_reques
     assert call["params"] == {"fileType": "XLSX"}
 
 
-def test_get_upload_signature_authenticates_with_a_bearer_token(recorded_request):
-    """Verify that get upload signature authenticates with the bound user Bearer."""
+def test_get_upload_signature_authenticates_with_the_internal_authentication_key(
+    recorded_request,
+):
+    """Verify that get upload signature sends the internal authentication-key header."""
     cloudinary_api.get_upload_signature("XLSX")
 
-    assert (
-        recorded_request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
-    )
-    assert recorded_request.calls[0]["headers"]["Authorization"] != "Bearer cloud-key"
+    headers = recorded_request.calls[0]["headers"]
+    assert headers["authentication-key"] == "internal-token"
+    assert "Authorization" not in headers
 
 
 def test_get_upload_signature_never_waits_forever(recorded_request):
@@ -110,23 +114,20 @@ def test_get_upload_signature_returns_the_ms_payload_as_is(recorded_request):
     assert cloudinary_api.get_upload_signature("XLSX") == SIGNATURE_PAYLOAD
 
 
-def test_get_upload_signature_uses_bound_user_bearer_not_service_api_key(
-    monkeypatch, cloudinary_env
+def test_get_upload_signature_ignores_the_bound_user_bearer(
+    recorded_request, bound_ms_auth_token
 ):
-    """Verify that get upload signature sends the user Bearer even when a service API key is set."""
-    request = RecordingRequest(FakeResponse(payload=SIGNATURE_PAYLOAD))
-    monkeypatch.setattr(cloudinary_api.requests, "request", request)
+    """Verify that get upload signature does not send the signed-in user's Bearer."""
+    cloudinary_api.get_upload_signature("IMAGE")
 
-    cloudinary_api.get_upload_signature("IMAGE", api_key="explicit-key")
-
-    assert request.calls[0]["headers"]["Authorization"] == "Bearer ms-user-token"
-    assert request.calls[0]["headers"]["Authorization"] != "Bearer explicit-key"
-    assert request.calls[0]["headers"]["Authorization"] != "Bearer cloud-key"
+    headers = recorded_request.calls[0]["headers"]
+    assert headers["authentication-key"] == "internal-token"
+    assert headers.get("Authorization") != f"Bearer {bound_ms_auth_token}"
 
 
 @pytest.mark.parametrize(
     "env_var",
-    ["CLOUDINARY_MS_BASE_URL", "MS_HTTP_TIMEOUT"],
+    ["CLOUDINARY_MS_BASE_URL", "MS_HTTP_TIMEOUT", INTERNAL_AUTHENTICATION_KEY_ENV],
 )
 def test_get_upload_signature_raises_naming_a_missing_env_var(
     monkeypatch, cloudinary_env, env_var
@@ -199,3 +200,16 @@ def test_get_upload_signature_raises_when_a_successful_answer_is_not_json(
 
     with pytest.raises(cloudinary_api.CloudinaryError):
         cloudinary_api.get_upload_signature("XLSX")
+
+
+def test_cloudinary_api_imports_internal_key_from_integrations_constants():
+    """Keep the outbound Cloudinary client on integrations constants."""
+    tree = ast.parse(Path(cloudinary_api.__file__).read_text(encoding="utf-8"))
+    sources = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module
+        and any(alias.name == "INTERNAL_AUTHENTICATION_KEY_ENV" for alias in node.names)
+    }
+    assert sources == {"cmd.api.integrations.constants"}

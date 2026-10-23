@@ -2,6 +2,8 @@
 
 AUTH_MS_LOGIN_PATH = "/api/auth/login"
 CLOUDINARY_UPLOAD_SIGNATURE_PATH = "/api/cloudinary/upload-signature"
+AUTHENTICATION_KEY_HEADER = "authentication-key"
+INTERNAL_AUTHENTICATION_KEY_ENV = "INTERNAL_AUTHENTICATION_KEY"
 INVENTORY_CREATE_PATH = "/api/inventories"
 PROFILE_MS_PATH = "/api/profile"
 

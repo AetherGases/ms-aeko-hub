@@ -15,8 +15,11 @@ from cmd.api.acl.open_ai.identity import (
     current_id_external_company,
     current_id_external_user,
 )
-from cmd.api.integrations.cloudinary_api import CloudinaryError, get_upload_signature
-from cmd.api.integrations.cloudinary_upload import upload_signed_file
+from cmd.api.integrations.cloudinary_api import (
+    CloudinaryError,
+    get_upload_signature,
+    upload_signed_file,
+)
 from cmd.api.integrations.inventory_api import InventoryError
 from cmd.api.tools.constants import (
     ANALYZE_INVENTORY_DESCRIPTION,
