@@ -16,6 +16,7 @@ from session.database.repository import Repository as SessionRepository
 from tests.mongo_doubles import StubCollection, StubDatabase
 from tests.test_finance import (
     FakeResponse,
+    PAYBACK_SUCCESS,
     RecordingRequest,
     ROI_SUCCESS,
     VALIDATION_ERROR_MESSAGE,
@@ -320,13 +321,22 @@ def test_the_roi_tool_is_logged(capsys, monkeypatch):
     assert request.calls
 
 
-def test_the_payback_tool_is_logged(capsys):
+def test_the_payback_tool_is_logged(capsys, monkeypatch):
     """Verify that the payback tool is logged."""
+    from cmd.api.integrations import investment_api
+
+    monkeypatch.setenv("INVESTMENT_MS_BASE_URL", "http://investment.test")
+    monkeypatch.setenv("INTERNAL_AUTHENTICATION_KEY", "internal-token")
+    monkeypatch.setenv("MS_HTTP_TIMEOUT", "60")
+    request = RecordingRequest(FakeResponse(payload=PAYBACK_SUCCESS))
+    monkeypatch.setattr(investment_api.requests, "request", request)
+
     finance._calculate_payback(
         {"capex": 1000, "wacc_monthly": 0.01, "monthly_cash_flow": 100}
     )
 
     assert descriptions(capsys, "tool")[0].startswith("calculate_payback succeeded in ")
+    assert request.calls
 
 
 def test_a_refused_finance_request_is_logged_red(capsys, monkeypatch):

@@ -8,6 +8,7 @@ import requests
 from cmd.api.integrations.constants import (
     AUTHENTICATION_KEY_HEADER,
     INTERNAL_AUTHENTICATION_KEY_ENV,
+    INVESTMENT_CALCULATOR_PAYBACK_PATH,
     INVESTMENT_CALCULATOR_ROI_PATH,
 )
 
@@ -103,4 +104,11 @@ def calculate_roi(payload: dict) -> dict:
     """POST the investment payload to the calculator service and return its ROI answer."""
 
     url = f"{_base_url()}{INVESTMENT_CALCULATOR_ROI_PATH}"
+    return _request("POST", url, json=payload)
+
+
+def calculate_payback(payload: dict) -> dict:
+    """POST the investment payload to the calculator service and return its payback answer."""
+
+    url = f"{_base_url()}{INVESTMENT_CALCULATOR_PAYBACK_PATH}"
     return _request("POST", url, json=payload)
