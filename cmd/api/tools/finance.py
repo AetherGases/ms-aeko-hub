@@ -1,8 +1,8 @@
-"""Calculate discounted ROI and payback over a fixed 60-month horizon.
+"""Expose discounted ROI and payback tools for investment analysis.
 
-Monthly cash flows are discounted by monthly WACC. ROI is net present value
-divided by CAPEX as a percentage. Payback is the first month covering CAPEX,
-or -1 when the investment is not recovered within the horizon.
+ROI posts the agent's JSON object to the calculator service. Payback is still
+computed here: monthly cash flows discounted by monthly WACC over a fixed
+60-month horizon, with payback as the first month covering CAPEX or -1.
 """
 
 import json
@@ -11,9 +11,7 @@ from typing import Any
 
 from langchain_core.tools import Tool
 
-from internal.shared import Module, logged
-
-
+from cmd.api.integrations import investment_api
 from cmd.api.tools.constants import (
     ROI_HORIZON_MONTHS,
     ROI_PAYBACK_NOT_RECOVERED,
@@ -25,6 +23,7 @@ from cmd.api.tools.constants import (
     ROI_DESCRIPTION,
     PAYBACK_DESCRIPTION,
 )
+from internal.shared import Module, logged
 
 
 def _as_object(request_input: str | dict[str, Any] | None) -> dict[str, Any]:
@@ -181,23 +180,10 @@ def _payback_month(present_values: list[int | float], capex: int | float) -> int
 
 @logged(Module.TOOL, "calculate_roi")
 def _calculate_roi(request_input: str | dict[str, Any] | None = "") -> dict[str, Any]:
-    """Calculate discounted value, net present value, ROI percentage, and viability."""
+    """Return the calculator service ROI payload for a JSON object string or dict."""
 
-    request = _parse_request(request_input)
-    capex = request["capex"]
-
-    vp_total = sum(_present_values(request["cash_flows"], request["wacc_monthly"]))
-    npv = vp_total - capex
-
-    return {
-        "capex": capex,
-        "wacc_monthly": request["wacc_monthly"],
-        "months": ROI_HORIZON_MONTHS,
-        "vp_total": _round(vp_total),
-        "vpl": _round(npv),
-        "roi_percent": _round(npv / capex * 100),
-        "viable": capex <= vp_total,
-    }
+    decoded_object = _as_object(request_input)
+    return investment_api.calculate_roi(decoded_object)
 
 
 @logged(Module.TOOL, "calculate_payback")
