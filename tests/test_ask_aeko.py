@@ -1,7 +1,7 @@
 """Verify the typed ChatGPT-to-Aeko messaging tool."""
 
 import pytest
-from langchain_core.tools import Tool
+from langchain_core.tools import StructuredTool
 
 from cmd.api.integrations.a2a.entity import (
     A2AMessage,
@@ -241,7 +241,7 @@ def test_get_ask_aeko_tools_exposes_typed_tool(configured_tool):
 
     assert len(tools) == 1
     tool = tools[0]
-    assert isinstance(tool, Tool)
+    assert isinstance(tool, StructuredTool)
     assert tool.name == "ask_aeko"
     assert tool.description == _strip_identity_from_description(
         tool_constants.ASK_AEKO_DESCRIPTION

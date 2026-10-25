@@ -5,7 +5,7 @@ Tools read through domain services. The server selects the database at startup.
 
 from typing import Any
 
-from langchain_core.tools import Tool, create_schema_from_function
+from langchain_core.tools import BaseTool, StructuredTool, create_schema_from_function
 
 from cmd.api.acl.open_ai.wrappers import wrap_chatgpt_tools
 from internal.shared import Module, logged
@@ -424,10 +424,10 @@ def _update_user_profile(
     }
 
 
-def _typed_tool(name: str, description: str, func: Any) -> Tool:
-    """Build a Tool whose schema uses the function's named arguments."""
+def _typed_tool(name: str, description: str, func: Any) -> StructuredTool:
+    """Build a StructuredTool whose schema uses the function's named arguments."""
 
-    return Tool(
+    return StructuredTool.from_function(
         name=name,
         description=description,
         func=func,
@@ -435,7 +435,7 @@ def _typed_tool(name: str, description: str, func: Any) -> Tool:
     )
 
 
-def get_improvement_plan_tools() -> list[Tool]:
+def get_improvement_plan_tools() -> list[BaseTool]:
     """Return typed plan tools that inject bound identity and hide other companies."""
 
     return wrap_chatgpt_tools(
@@ -469,7 +469,7 @@ def get_improvement_plan_tools() -> list[Tool]:
     )
 
 
-def get_user_memory_tools() -> list[Tool]:
+def get_user_memory_tools() -> list[BaseTool]:
     """Return typed user and memory tools that inject bound conversation identity."""
 
     return wrap_chatgpt_tools(
@@ -498,7 +498,7 @@ def get_user_memory_tools() -> list[Tool]:
     )
 
 
-def get_user_profile_write_tools() -> list[Tool]:
+def get_user_profile_write_tools() -> list[BaseTool]:
     """Return typed profile writers that inject bound conversation identity."""
 
     return wrap_chatgpt_tools(
@@ -512,7 +512,7 @@ def get_user_profile_write_tools() -> list[Tool]:
     )
 
 
-def get_session_tools() -> list[Tool]:
+def get_session_tools() -> list[BaseTool]:
     """Return typed session tools that inject bound conversation identity."""
 
     return wrap_chatgpt_tools(

@@ -5,7 +5,7 @@ import inspect
 import re
 from typing import Any, Callable
 
-from langchain_core.tools import Tool, create_schema_from_function
+from langchain_core.tools import BaseTool, StructuredTool, create_schema_from_function
 
 from cmd.api.acl.open_ai.constants import (
     ANONYMOUS_CHATGPT_TOOL_NAMES,
@@ -17,7 +17,7 @@ from cmd.api.acl.open_ai.identity import (
 )
 
 
-def wrap_chatgpt_tools(tools: list[Tool]) -> list[Tool]:
+def wrap_chatgpt_tools(tools: list[BaseTool]) -> list[BaseTool]:
     """Return tools with bound identity injected and other companies' plans hidden.
 
     Aeko Mongo, session, memory, and plan getters reuse this wrapping so the LLM
@@ -97,7 +97,7 @@ def _chatgpt_function(
     return wrapper
 
 
-def _wrap_chatgpt_tool(tool: Tool) -> Tool:
+def _wrap_chatgpt_tool(tool: BaseTool) -> BaseTool:
     """Wrap one catalog tool for ChatGPT, leaving anonymous tools unchanged."""
 
     from cmd.api.tools.constants import CHATGPT_ANALYZE_INVENTORY_DESCRIPTION
@@ -107,7 +107,7 @@ def _wrap_chatgpt_tool(tool: Tool) -> Tool:
         return tool
 
     if tool.name == "analyze_inventory":
-        return Tool(
+        return StructuredTool.from_function(
             name=tool.name,
             description=CHATGPT_ANALYZE_INVENTORY_DESCRIPTION,
             func=_analyze_inventory_chatgpt,
@@ -131,7 +131,7 @@ def _wrap_chatgpt_tool(tool: Tool) -> Tool:
         check_company=check_company,
     )
 
-    return Tool(
+    return StructuredTool.from_function(
         name=tool.name,
         description=_strip_identity_from_description(tool.description),
         func=wrapped,

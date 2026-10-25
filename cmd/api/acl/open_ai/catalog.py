@@ -5,7 +5,7 @@ ChatGPT-only tools. Metrics and Chroma write tools are never part of it.
 Tavily stays on Aeko agents and is omitted here.
 """
 
-from langchain_core.tools import Tool
+from langchain_core.tools import BaseTool
 
 from cmd.api.acl.open_ai.wrappers import wrap_chatgpt_tools
 from cmd.api.integrations.climatiq_api import get_climatiq_tools
@@ -37,10 +37,10 @@ _CATALOG_GETTERS = (
 )
 
 
-def get_chatgpt_tools() -> list[Tool]:
+def get_chatgpt_tools() -> list[BaseTool]:
     """Return every tool exposed to ChatGPT, unique by tool name."""
 
-    tools: dict[str, Tool] = {}
+    tools: dict[str, BaseTool] = {}
     for getter in _CATALOG_GETTERS:
         for tool in getter():
             tools.setdefault(tool.name, tool)

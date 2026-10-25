@@ -8,7 +8,7 @@ from typing import Any, Callable
 from urllib.parse import urlparse
 
 import requests
-from langchain_core.tools import Tool, create_schema_from_function
+from langchain_core.tools import BaseTool, StructuredTool, create_schema_from_function
 from pydantic import BaseModel
 
 from cmd.api.acl.open_ai.identity import (
@@ -351,10 +351,10 @@ def _get_inventory_analysis(
     }
 
 
-def _typed_tool(name: str, description: str, func: Any) -> Tool:
-    """Build a Tool whose schema uses the function's named arguments."""
+def _typed_tool(name: str, description: str, func: Any) -> StructuredTool:
+    """Build a StructuredTool whose schema uses the function's named arguments."""
 
-    return Tool(
+    return StructuredTool.from_function(
         name=name,
         description=description,
         func=func,
@@ -362,7 +362,7 @@ def _typed_tool(name: str, description: str, func: Any) -> Tool:
     )
 
 
-def get_inventory_ingest_tools() -> list[Tool]:
+def get_inventory_ingest_tools() -> list[BaseTool]:
     """Return typed tools for inventory ingest and analysis polling."""
 
     return [

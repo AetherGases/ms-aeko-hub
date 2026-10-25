@@ -4,7 +4,7 @@ import importlib
 from datetime import datetime
 
 import pytest
-from langchain_core.tools import Tool
+from langchain_core.tools import StructuredTool
 
 from cmd.api.acl.open_ai.wrappers import _strip_identity_from_description
 from cmd.api.tools import constants as tool_constants
@@ -711,7 +711,7 @@ def test_get_improvement_plan_tools_exposes_the_typed_plan_catalog():
     tools = mongo_tools.get_improvement_plan_tools()
 
     assert {tool.name for tool in tools} == IMPROVEMENT_PLAN_TOOL_NAMES
-    assert all(isinstance(tool, Tool) and tool.description for tool in tools)
+    assert all(isinstance(tool, StructuredTool) and tool.description for tool in tools)
     assert all(
         "filter" not in tool.args and "filter_json" not in tool.args for tool in tools
     )
@@ -887,7 +887,7 @@ def test_get_user_profile_write_tools_exposes_the_profile_writer():
     tools = mongo_tools.get_user_profile_write_tools()
 
     assert {tool.name for tool in tools} == PROFILE_WRITE_TOOL_NAMES
-    assert all(isinstance(tool, Tool) and tool.description for tool in tools)
+    assert all(isinstance(tool, StructuredTool) and tool.description for tool in tools)
     assert all(
         "filter" not in tool.args and "filter_json" not in tool.args for tool in tools
     )
@@ -911,6 +911,27 @@ def test_update_user_profile_tool_declares_role_and_usecase():
     )
 
     assert set(tool.args) == {"role", "usecase"}
+    assert isinstance(tool, StructuredTool)
+
+
+def test_update_user_profile_tool_invokes_with_role_and_usecase(bound_user):
+    """Verify that a two-field call reaches the service instead of ToolException."""
+    users = StubUserService(user=USER)
+    bind(users=users)
+    tool = next(
+        item
+        for item in mongo_tools.get_user_profile_write_tools()
+        if item.name == "update_user_profile"
+    )
+
+    result = tool.invoke({"role": "gestor", "usecase": "auditoria"})
+
+    assert result == {
+        "id_external_user": 12345,
+        "role": "gestor",
+        "usecase": "auditoria",
+    }
+    assert users.calls == [("update_user_profile", 12345, "gestor", "auditoria")]
 
 
 def _named_tool(tools, name):

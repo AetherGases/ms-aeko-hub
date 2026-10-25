@@ -1,7 +1,7 @@
 """Verify inventory ingest tools use upload tickets and domain services safely."""
 
 import pytest
-from langchain_core.tools import Tool
+from langchain_core.tools import StructuredTool
 
 from cmd.api.integrations.inventory_api import InventoryError
 from cmd.api.tools import constants as tool_constants
@@ -402,7 +402,7 @@ def test_get_inventory_ingest_tools_exposes_typed_tools_and_descriptions(service
     tools = {tool.name: tool for tool in inventory_tools.get_inventory_ingest_tools()}
 
     assert set(tools) == {"analyze_inventory", "get_inventory_analysis"}
-    assert all(isinstance(tool, Tool) for tool in tools.values())
+    assert all(isinstance(tool, StructuredTool) for tool in tools.values())
     assert tools["analyze_inventory"].description == (
         tool_constants.ANALYZE_INVENTORY_DESCRIPTION
     )

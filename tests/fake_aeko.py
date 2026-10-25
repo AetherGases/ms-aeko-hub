@@ -10,7 +10,7 @@ from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-__version__ = "3.5.1"
+__version__ = "3.6.2"
 
 
 AGENT_NAMES: tuple[str, ...] = (

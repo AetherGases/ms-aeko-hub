@@ -1,6 +1,6 @@
 """Expose a typed tool for sending ChatGPT questions to Aeko."""
 
-from langchain_core.tools import Tool, create_schema_from_function
+from langchain_core.tools import BaseTool, StructuredTool, create_schema_from_function
 
 from cmd.api.acl.open_ai.wrappers import wrap_chatgpt_tools
 from cmd.api.integrations.a2a.entity import (
@@ -72,12 +72,12 @@ def ask_aeko(
     )
 
 
-def get_ask_aeko_tools() -> list[Tool]:
+def get_ask_aeko_tools() -> list[BaseTool]:
     """Return the typed tool that injects bound identity when sending questions to Aeko."""
 
     return wrap_chatgpt_tools(
         [
-            Tool(
+            StructuredTool.from_function(
                 name="ask_aeko",
                 description=ASK_AEKO_DESCRIPTION,
                 func=ask_aeko,
