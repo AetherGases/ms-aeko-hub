@@ -66,7 +66,7 @@ from a domain package.
   ms-auth profile, and builds the FastMCP catalog.
 - `cmd/api/tools` adapts domain services into LangChain tools.
 - `cmd/api/integrations` talks to Inventory, Auth, Profile, Cloudinary,
-  Climatiq, Tavily, and Chroma.
+  Climatiq, Tavily, Chroma, and the investment calculator service.
 - `cmd/memory_generator_worker` is a separate process. Keep its constants in
   `cmd/memory_generator_worker/constants.py`.
 
@@ -117,7 +117,8 @@ After a change, run the files that cover the behavior you touched. Ask which
   - ChatGPT allowlists live in `cmd/api/acl/open_ai/constants.py`.
   - Upload-ticket states live in `upload_ticket/constants.py`.
 - Use the environment variable name directly when an alias adds no information.
-- Calculator function mappings and request field schemas stay in Python.
+- Calculator function mappings stay in Python. Investment request schemas
+  belong to the calculator service; this gateway forwards the JSON object.
 
 ### Environment
 
