@@ -50,14 +50,6 @@ ROI_HORIZON_MONTHS = int(os.environ["ROI_HORIZON_MONTHS"])
 
 ROI_PAYBACK_NOT_RECOVERED = int(os.environ["ROI_PAYBACK_NOT_RECOVERED"])
 
-ROI_DECIMAL_PLACES = int(os.environ["ROI_DECIMAL_PLACES"])
-
-ROI_MAX_WACC_MONTHLY = int(os.environ["ROI_MAX_WACC_MONTHLY"])
-
-ROI_CASH_FLOW_FIELDS = ("cash_flows", "monthly_cash_flow")
-
-ROI_REQUEST_FIELDS = ("capex", "wacc_monthly", *ROI_CASH_FLOW_FIELDS)
-
 ROI_REQUEST_DESCRIPTION = os.environ["ROI_REQUEST_DESCRIPTION"].replace(
     "{ROI_HORIZON_MONTHS}", str(ROI_HORIZON_MONTHS)
 )
