@@ -210,7 +210,6 @@ def _flag_writers(tools: dict[str, list[AekoTool]], failure_message: str) -> Non
                     "write_failure_message": failure_message,
                 }
 
-
 def _warm_up_mcp_sessions() -> None:
     """Start each MCP session in a background thread without delaying API startup."""
 
