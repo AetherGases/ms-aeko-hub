@@ -440,6 +440,11 @@ paths:
                 defined_problem: high scope 1 emissions
                 solving_method: replace the boiler fleet
                 reasoning: direct combustion dominates the inventory
+                recommended_gases:
+                  - scope: 1
+                    emission: 120.5
+                    reduction_percentage: 35.25
+                    name: Biometano
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -774,7 +779,44 @@ components:
           type: string
           description: Why that method addresses that problem.
           example: direct combustion dominates the inventory
+        recommended_gases:
+          type: array
+          maxItems: 2
+          description: Up to 2 recommended gas substitutions, with emission in tCO2e. Empty when no substitution applies.
+          items:
+            $ref: '#/components/schemas/RecommendedGasData'
       required:
         - defined_problem
         - solving_method
         - reasoning
+        - recommended_gases
+    RecommendedGasData:
+      type: object
+      properties:
+        scope:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: GHG scope number (1, 2 or 3) the substitution applies to.
+          example: 1
+        emission:
+          type: number
+          minimum: 0
+          description: Projected emission after the swap, in tCO2e.
+          example: 120.5
+        reduction_percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Drop versus the current emission of the replaced gas, in percent.
+          example: 35.25
+        name:
+          type: string
+          minLength: 1
+          description: Substitute gas to adopt.
+          example: Biometano
+      required:
+        - scope
+        - emission
+        - reduction_percentage
+        - name

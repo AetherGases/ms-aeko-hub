@@ -321,12 +321,14 @@ def test_get_inventory_analysis_returns_report_contract(services):
         defined_problem="high scope 1",
         method="replace boilers",
         reasoning="combustion",
+        recommended_gases=[{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}],
     )
 
     assert inventory_tools._get_inventory_analysis(12345, 1) == {
         "defined_problem": "high scope 1",
         "solving_method": "replace boilers",
         "reasoning": "combustion",
+        "recommended_gases": [{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}],
     }
 
 

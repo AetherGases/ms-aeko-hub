@@ -348,6 +348,7 @@ def _get_inventory_analysis(
         "defined_problem": plan.defined_problem,
         "solving_method": plan.method,
         "reasoning": plan.reasoning,
+        "recommended_gases": plan.recommended_gases,
     }
 
 

@@ -54,6 +54,7 @@ def get_latest_improvement_plans_query(id_external_company: int) -> tuple[dict, 
         "defined_problem": 1,
         "method": 1,
         "reasoning": 1,
+        "recommended_gases": 1,
         "updated_at": 1,
     }
 
@@ -66,6 +67,7 @@ def create_improvement_plan_query(improvement_plan: ImprovementPlan) -> dict:
         "defined_problem": improvement_plan.defined_problem,
         "method": improvement_plan.method,
         "reasoning": improvement_plan.reasoning,
+        "recommended_gases": improvement_plan.recommended_gases,
         "updated_at": improvement_plan.updated_at or datetime.utcnow(),
     }
 

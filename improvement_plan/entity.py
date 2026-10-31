@@ -11,6 +11,7 @@ class ImprovementPlan:
     defined_problem: str
     method: str
     reasoning: str
+    recommended_gases: list[dict]
     updated_at: datetime | None
 
     def __init__(
@@ -23,6 +24,7 @@ class ImprovementPlan:
         method: str = "",
         reasoning: str = "",
         updated_at: datetime | None = None,
+        recommended_gases: list[dict] | None = None,
     ):
         """Store the fields of an improvement plan."""
         self.id = id
@@ -32,6 +34,7 @@ class ImprovementPlan:
         self.defined_problem = defined_problem
         self.method = method
         self.reasoning = reasoning
+        self.recommended_gases = recommended_gases or []
         self.updated_at = updated_at
 
     def __str__(self) -> str:
@@ -45,6 +48,7 @@ class ImprovementPlan:
             f"defined_problem={self.defined_problem!r}, "
             f"method={self.method!r}, "
             f"reasoning={self.reasoning!r}, "
+            f"recommended_gases={self.recommended_gases!r}, "
             f"updated_at={self.updated_at!r}"
             ")"
         )

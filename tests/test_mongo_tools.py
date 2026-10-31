@@ -100,6 +100,7 @@ PLAN = ImprovementPlan(
     defined_problem="flaring",
     method="PDCA",
     reasoning="replace the flare",
+    recommended_gases=[{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}],
     updated_at="2026-07-26T14:30:00Z",
 )
 MEMORY = UserMemory(
@@ -301,6 +302,7 @@ def test_get_improvement_plan_by_inventory_reads_through_the_plan_service():
             "defined_problem": "flaring",
             "method": "PDCA",
             "reasoning": "replace the flare",
+            "recommended_gases": [{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}],
             "updated_at": "2026-07-26T14:30:00Z",
         }
     ]

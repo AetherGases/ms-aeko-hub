@@ -133,6 +133,7 @@ def test_chatgpt_get_plan_returns_the_same_catalog_for_the_same_company(monkeypa
         defined_problem="flaring",
         method="PDCA",
         reasoning="replace the flare",
+        recommended_gases=[{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}],
         updated_at="2026-01-01T00:00:00Z",
     )
 
@@ -161,6 +162,7 @@ def test_chatgpt_get_plan_returns_the_same_catalog_for_the_same_company(monkeypa
             "defined_problem": "flaring",
             "method": "PDCA",
             "reasoning": "replace the flare",
+            "recommended_gases": [{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}],
             "updated_at": "2026-01-01T00:00:00Z",
         }
     ]

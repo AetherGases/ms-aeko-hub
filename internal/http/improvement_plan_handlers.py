@@ -197,6 +197,37 @@ class ExtractedInventoryData(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class RecommendedGasData(BaseModel):
+    scope: int = Field(
+        ...,
+        ge=1,
+        le=3,
+        description="GHG scope number (1, 2 or 3) the substitution applies to.",
+        json_schema_extra={"example": 1},
+    )
+    emission: float = Field(
+        ...,
+        ge=0,
+        description="Projected emission after the swap, in tCO2e.",
+        json_schema_extra={"example": 120.5},
+    )
+    reduction_percentage: float = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Drop versus the current emission of the replaced gas, in percent.",
+        json_schema_extra={"example": 35.25},
+    )
+    name: str = Field(
+        ...,
+        min_length=1,
+        description="Substitute gas to adopt.",
+        json_schema_extra={"example": "Biometano"},
+    )
+
+    model_config = ConfigDict(frozen=True)
+
+
 class ImprovementPlanReportData(BaseModel):
     defined_problem: str = Field(
         ...,
@@ -212,6 +243,14 @@ class ImprovementPlanReportData(BaseModel):
         ...,
         description="Why that method addresses that problem.",
         json_schema_extra={"example": "direct combustion dominates the inventory"},
+    )
+    recommended_gases: list[RecommendedGasData] = Field(
+        ...,
+        max_length=2,
+        description=(
+            "Up to 2 recommended gas substitutions, with emission in tCO2e. "
+            "Empty when no substitution applies."
+        ),
     )
 
     model_config = ConfigDict(frozen=True)
@@ -370,6 +409,14 @@ async def input_report(
                         "defined_problem": "high scope 1 emissions",
                         "solving_method": "replace the boiler fleet",
                         "reasoning": "direct combustion dominates the inventory",
+                        "recommended_gases": [
+                            {
+                                "scope": 1,
+                                "emission": 120.5,
+                                "reduction_percentage": 35.25,
+                                "name": "Biometano",
+                            }
+                        ],
                     }
                 }
             },
@@ -405,4 +452,5 @@ def get_report(
         defined_problem=plan.defined_problem,
         solving_method=plan.method,
         reasoning=plan.reasoning,
+        recommended_gases=plan.recommended_gases,
     )
