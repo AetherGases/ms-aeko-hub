@@ -20,6 +20,7 @@ AEKO_TEMPERATURE = os.getenv("AEKO_TEMPERATURE")
 AEKO_TOP_P = os.getenv("AEKO_TOP_P")
 AEKO_TOP_K = os.getenv("AEKO_TOP_K")
 AEKO_WRITE_FAILURE_MESSAGE = os.getenv("AEKO_WRITE_FAILURE_MESSAGE")
+WRITING_TOOL_NAMES = {"update_user_profile"}
 
 CHATGPT_MCP_PREFIX = "/ai/mcp"
 

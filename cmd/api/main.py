@@ -21,8 +21,8 @@ from cmd.api.constants import (
     AEKO_SLOW_MODEL,
     AEKO_TEMPERATURE,
     AEKO_TOP_K,
-    AEKO_WRITE_FAILURE_MESSAGE,
     AEKO_TOP_P,
+    AEKO_WRITE_FAILURE_MESSAGE,
     CHATGPT_MCP_PREFIX,
     DB_NAME,
     GEMINI_API_KEY,
@@ -30,6 +30,7 @@ from cmd.api.constants import (
     MONGO_URI,
     OPENAPI_TAGS,
     REDIS_URI,
+    WRITING_TOOL_NAMES,
 )
 from cmd.api.integrations.a2a.service import Service as A2AService
 from cmd.api.acl.mcp_auth import configure as configure_mcp_auth
@@ -176,9 +177,6 @@ AEKO_TOOLS = {
     + list(ROI_PAYBACK_TOOLS),
     "Roteador": list(USER_PROFILE_WRITE_TOOLS),
 }
-
-
-WRITING_TOOL_NAMES = {"update_user_profile"}
 
 
 MCP_SESSIONS = (CHROMA_SESSION,)
