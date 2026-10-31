@@ -236,7 +236,9 @@ def _context_from(previous_plan: ImprovementPlan | None) -> str:
     if previous_plan is None:
         return ""
     gases = "; ".join(
-        f"{gas['name']} (escopo {gas['scope']}, emissão {gas['emission']} tCO2e, redução {gas['reduction_percentage']}%)"
+        f"{gas['name']} (escopo {gas['scope']}, "
+        f"emissão {gas['emission']} tCO2e, "
+        f"redução {gas['reduction_percentage']}%)"
         for gas in previous_plan.recommended_gases
     )
     return "\n".join(
