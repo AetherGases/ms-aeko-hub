@@ -659,6 +659,7 @@ def test_record_created_inventory_allows_get_inventory_analysis(services):
         "defined_problem": "high scope 1",
         "solving_method": "replace boilers",
         "reasoning": "combustion",
+        "recommended_gases": [],
     }
 
 

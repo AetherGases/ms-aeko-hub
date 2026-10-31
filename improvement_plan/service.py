@@ -235,11 +235,16 @@ def _context_from(previous_plan: ImprovementPlan | None) -> str:
     """Render the current plan as analysis context, or empty text when absent."""
     if previous_plan is None:
         return ""
+    gases = "; ".join(
+        f"{gas['name']} (escopo {gas['scope']}, emissão {gas['emission']} tCO2e, redução {gas['reduction_percentage']}%)"
+        for gas in previous_plan.recommended_gases
+    )
     return "\n".join(
         [
             f"Relatório anterior (inventário {previous_plan.id_external_inventory}, atualizado em {previous_plan.updated_at}):",
             f"Problema identificado: {previous_plan.defined_problem}",
             f"Método: {previous_plan.method}",
             f"Justificativa: {previous_plan.reasoning}",
+            f"Gases recomendados: {gases or 'nenhum'}",
         ]
     )

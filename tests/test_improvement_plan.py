@@ -785,6 +785,39 @@ def test_the_current_plan_of_the_inventory_becomes_context():
     assert all(call[0] != "get_last" for call in repository.calls)
 
 
+def test_the_context_lists_the_recommended_gases_of_the_current_plan():
+    """Verify that the context lists the recommended gases of the current plan."""
+    analyzers = StubAnalyzerFactory()
+    plan = previous_plan(ID_INVENTORY, "problem", "method", "reasoning")
+    plan.recommended_gases = [{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}]
+
+    run(repository=StubPlanRepository(existing=plan), analyzers=analyzers)
+
+    context = analyzers.last.context
+    assert "Biometano" in context
+    assert "120.5" in context
+    assert "35.25" in context
+
+
+def test_the_context_states_when_the_current_plan_has_no_recommended_gases():
+    """Verify that the context states when the current plan has no recommended gases."""
+    analyzers = StubAnalyzerFactory()
+    repository = StubPlanRepository(
+        existing=previous_plan(ID_INVENTORY, "problem", "method", "reasoning")
+    )
+
+    run(repository=repository, analyzers=analyzers)
+
+    assert "Gases recomendados: nenhum" in analyzers.last.context
+
+
+def test_the_string_form_of_a_plan_carries_the_recommended_gases():
+    """Verify that the string form of a plan, stored in user memory, carries the recommended gases."""
+    plan = ImprovementPlan(recommended_gases=[{"scope": 1, "emission": 120.5, "reduction_percentage": 35.25, "name": "Biometano"}])
+
+    assert "Biometano" in str(plan)
+
+
 def test_the_context_is_empty_when_the_inventory_has_no_plan():
     """Verify that the context is empty when the inventory has no plan."""
     analyzers = StubAnalyzerFactory()

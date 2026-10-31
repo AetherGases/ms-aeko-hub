@@ -38,6 +38,7 @@ _plan_catalog_keys = (
     "defined_problem",
     "method",
     "reasoning",
+    "recommended_gases",
     "updated_at",
 )
 
@@ -139,6 +140,7 @@ def _plan_document(plan: ImprovementPlan) -> dict[str, Any]:
         "defined_problem": plan.defined_problem,
         "method": plan.method,
         "reasoning": plan.reasoning,
+        "recommended_gases": plan.recommended_gases,
         "updated_at": _timestamp(plan.updated_at),
     }
 
