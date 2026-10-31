@@ -22,6 +22,7 @@ from cmd.api.constants import (
     AEKO_TEMPERATURE,
     AEKO_TOP_K,
     AEKO_TOP_P,
+    AEKO_WRITE_FAILURE_MESSAGE,
     CHATGPT_MCP_PREFIX,
     DB_NAME,
     GEMINI_API_KEY,
@@ -29,6 +30,7 @@ from cmd.api.constants import (
     MONGO_URI,
     OPENAPI_TAGS,
     REDIS_URI,
+    WRITING_TOOL_NAMES,
 )
 from cmd.api.integrations.a2a.service import Service as A2AService
 from cmd.api.acl.mcp_auth import configure as configure_mcp_auth
@@ -197,6 +199,18 @@ def _float_or_none(value: str | None) -> float | None:
     return float(value) if value else None
 
 
+def _flag_writers(tools: dict[str, list[AekoTool]], failure_message: str) -> None:
+    """Mark every state-changing tool as writing, with the sentence for a lost write."""
+    for agent_tools in tools.values():
+        for aeko_tool in agent_tools:
+            if aeko_tool.tool.name in WRITING_TOOL_NAMES:
+                aeko_tool.tool.metadata = {
+                    **(aeko_tool.tool.metadata or {}),
+                    "is_writing": True,
+                    "write_failure_message": failure_message,
+                }
+
+
 def _warm_up_mcp_sessions() -> None:
     """Start each MCP session in a background thread without delaying API startup."""
 
@@ -349,6 +363,11 @@ async def lifespan(app: FastAPI):
     """Initialize database, cache, SDK tools, and metric sinks, then release connections on shutdown."""
     global mongo_client, redis_client, db
 
+    if not AEKO_WRITE_FAILURE_MESSAGE:
+        raise RuntimeError(
+            "AEKO_WRITE_FAILURE_MESSAGE is required: a pt-BR sentence with {tools}."
+        )
+
     silence_uvicorn_access_log()
     configure_opentelemetry()
 
@@ -373,6 +392,7 @@ async def lifespan(app: FastAPI):
         top_p=_float_or_none(AEKO_TOP_P),
         top_k=_int_or_none(AEKO_TOP_K),
     )
+    _flag_writers(AEKO_TOOLS, AEKO_WRITE_FAILURE_MESSAGE)
     AekoMessenger.set_tools(AEKO_TOOLS)
 
     app.state._state["aeko_messenger_factory"] = build_messenger

@@ -10,7 +10,7 @@ from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-__version__ = "3.6.2"
+__version__ = "3.7.0"
 
 
 AGENT_NAMES: tuple[str, ...] = (
@@ -347,6 +347,7 @@ class AekoMessenger:
     next_summary: str | None = None
     next_summary_error: Exception | None = None
     next_summary_agents: tuple[str, ...] = ("FAQ",)
+    next_tool_calls: tuple[tuple[str, str, dict], ...] = ()
 
     def __init__(
         self, user: AekoUser, memories: Sequence[AekoUserMemory] | None = None
@@ -381,6 +382,7 @@ class AekoMessenger:
         cls.next_summary = None
         cls.next_summary_error = None
         cls.next_summary_agents = ("FAQ",)
+        cls.next_tool_calls = ()
 
     @classmethod
     def set_tools(cls, tools: dict[str, list[Any]]) -> None:
@@ -425,6 +427,14 @@ class AekoMessenger:
                 ),
             )
 
+        staged = []
+        for agent, name, args in type(self).next_tool_calls:
+            tool = next(t for t in RUNTIME.tools[agent] if t.name == name).tool
+            if (getattr(tool, "metadata", None) or {}).get("is_writing") is True:
+                staged.append((tool, args))
+            else:
+                tool.invoke(args)
+
         output = type(self).next_output
         if output is None:
             output = f"echo: {message}" if type(self).next_approved else ""
@@ -440,6 +450,9 @@ class AekoMessenger:
                     type(self).next_latency,
                 ),
             )
+
+        for tool, args in staged:
+            tool.invoke(args)
 
         turn = AekoMessage(input=message, output=output)
 
