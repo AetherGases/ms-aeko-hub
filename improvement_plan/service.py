@@ -191,6 +191,15 @@ def improvement_plan_from_aeko_plan(plan) -> ImprovementPlan:
         defined_problem=plan.defined_problem,
         method=plan.method,
         reasoning=plan.reasoning,
+        recommended_gases=[
+            {
+                "scope": gas.scope,
+                "emission": gas.emission,
+                "reduction_percentage": gas.reduction_percentage,
+                "name": gas.name,
+            }
+            for gas in plan.recommended_gases
+        ],
         updated_at=None,
     )
 

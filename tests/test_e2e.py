@@ -1040,7 +1040,53 @@ def test_get_report_returns_the_textual_plan(report_app):
         "defined_problem": "high scope 1 emissions",
         "solving_method": "replace the boiler fleet",
         "reasoning": "direct combustion dominates the inventory",
+        "recommended_gases": [],
     }
+
+
+def test_get_report_returns_the_recommended_gases_the_sdk_produced(
+    report_app, fake_sdk
+):
+    """Verify that POST then GET returns the recommended gases unchanged."""
+    client, *_ = report_app
+    gases = [
+        {
+            "scope": 1,
+            "emission": 120.5,
+            "reduction_percentage": 35.25,
+            "name": "Biometano",
+        },
+        {
+            "scope": 2,
+            "emission": 0.0,
+            "reduction_percentage": 100.0,
+            "name": "Hidrogênio verde",
+        },
+    ]
+    fake_sdk.AekoInventoryAnalyzer.next_plan_fields = {"recommended_gases": gases}
+
+    request_report(client)
+    response = get_report(client)
+
+    assert response.json()["recommended_gases"] == gases
+
+
+def test_get_report_reads_a_plan_stored_without_recommended_gases(report_app):
+    """Verify that GET on a plan stored before the field existed returns an empty list."""
+    client, api_main, plan_repository = report_app
+    plan_repository.plans.append(
+        ImprovementPlan(
+            id="old",
+            id_external_inventory=ID_INVENTORY,
+            id_external_company=90,
+            defined_problem="old problem",
+        )
+    )
+
+    response = get_report(client)
+
+    assert response.status_code == 200
+    assert response.json()["recommended_gases"] == []
 
 
 def test_get_report_is_404_when_no_plan_exists(report_app):

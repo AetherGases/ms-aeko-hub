@@ -171,6 +171,13 @@ class AekoSummaryResponse(BaseModel):
     aeko_metrics: AekoMetrics
 
 
+class AekoRecommendedGas(BaseModel):
+    scope: Literal[1, 2, 3]
+    emission: float = Field(ge=0)
+    reduction_percentage: float = Field(ge=0, le=100)
+    name: str = Field(min_length=1)
+
+
 class AekoImprovementPlan(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -179,6 +186,9 @@ class AekoImprovementPlan(BaseModel):
     defined_problem: str
     method: str
     reasoning: str
+    recommended_gases: list[AekoRecommendedGas] = Field(
+        default_factory=list, max_length=2
+    )
     updated_at: datetime = Field(default_factory=_now)
 
 
@@ -558,7 +568,7 @@ class AekoInventoryAnalyzer:
 
     instances: list["AekoInventoryAnalyzer"] = []
 
-    next_plan_fields: dict[str, str] = {}
+    next_plan_fields: dict[str, Any] = {}
     next_inventory_fields: dict[str, Any] = {}
     next_error: Exception | None = None
     next_agents: tuple[str, ...] = ("Análista de inventários",)

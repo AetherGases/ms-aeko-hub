@@ -17,7 +17,7 @@ from improvement_plan.improvement_plan import (
     IRepository,
     IService,
 )
-from improvement_plan.service import Service
+from improvement_plan.service import Service, improvement_plan_from_aeko_plan
 from internal.shared.event_tracking import (
     bind_id_request,
     set_aeko_metrics_sink,
@@ -111,6 +111,24 @@ class StubPlanRepository:
         return self.result if self.result is not None else []
 
 
+GAS = {
+    "scope": 1,
+    "emission": 120.5,
+    "reduction_percentage": 35.25,
+    "name": "Biometano",
+}
+
+
+class StubGas:
+    """Stands in for one recommended gas of the SDK plan."""
+
+    def __init__(self, scope, emission, reduction_percentage, name):
+        self.scope = scope
+        self.emission = emission
+        self.reduction_percentage = reduction_percentage
+        self.name = name
+
+
 class StubPlan:
     """Stands in for the `AekoImprovementPlan` the SDK returns."""
 
@@ -120,6 +138,7 @@ class StubPlan:
         self.defined_problem = "high scope 1 emissions"
         self.method = "replace the boiler fleet"
         self.reasoning = "direct combustion dominates the inventory"
+        self.recommended_gases = []
 
 
 class StubEmission:
@@ -312,6 +331,7 @@ def test_entity_defaults_to_an_empty_plan():
     assert plan.id_external_unit is None
     assert plan.id_external_company is None
     assert (plan.defined_problem, plan.method, plan.reasoning) == ("", "", "")
+    assert plan.recommended_gases == []
 
 
 def test_entity_renders_every_field_as_text():
@@ -331,6 +351,7 @@ def test_entity_renders_every_field_as_text():
     assert "id_external_inventory=1" in rendered
     assert "id_external_unit=77" in rendered
     assert "'problem'" in rendered
+    assert "recommended_gases=[]" in rendered
 
 
 def test_extracted_inventory_defaults_to_empty_emissions():
@@ -565,6 +586,7 @@ def test_get_latest_improvement_plans_query_filters_by_company():
         "defined_problem": 1,
         "method": 1,
         "reasoning": 1,
+        "recommended_gases": 1,
         "updated_at": 1,
     }
 
@@ -579,6 +601,7 @@ def test_create_improvement_plan_query_maps_every_field_the_flow_persists():
         defined_problem="problem",
         method="PDCA",
         reasoning="why",
+        recommended_gases=[GAS],
         updated_at=UPDATED_AT,
     )
 
@@ -590,9 +613,41 @@ def test_create_improvement_plan_query_maps_every_field_the_flow_persists():
         "defined_problem": "problem",
         "method": "PDCA",
         "reasoning": "why",
+        "recommended_gases": [GAS],
         "updated_at": UPDATED_AT,
     }
     assert "id_external_unit" not in document
+
+
+def test_replace_improvement_plan_query_carries_the_recommended_gases():
+    """Verify that replace improvement plan query carries the recommended gases."""
+    plan = ImprovementPlan(id_external_inventory=1, recommended_gases=[GAS])
+
+    _, document = q.replace_improvement_plan_query(plan)
+
+    assert document["recommended_gases"] == [GAS]
+
+
+def test_improvement_plan_from_data_reads_the_recommended_gases():
+    """Verify that improvement plan from data reads the recommended gases."""
+    plan = improvement_plan_from_data({**PLAN_DOCUMENT, "recommended_gases": [GAS]})
+
+    assert plan.recommended_gases == [GAS]
+
+
+def test_improvement_plan_from_data_defaults_a_stored_plan_without_gases_to_empty():
+    """Verify that a plan stored before the field existed reads as an empty list."""
+    assert "recommended_gases" not in PLAN_DOCUMENT
+
+    assert improvement_plan_from_data(PLAN_DOCUMENT).recommended_gases == []
+
+
+def test_the_sdk_plan_maps_its_recommended_gases_onto_the_domain_plan():
+    """Verify that the SDK plan mapper copies the recommended gases."""
+    sdk_plan = StubPlan()
+    sdk_plan.recommended_gases = [StubGas(**GAS)]
+
+    assert improvement_plan_from_aeko_plan(sdk_plan).recommended_gases == [GAS]
 
 
 def test_create_omits_id_external_company_when_unset():

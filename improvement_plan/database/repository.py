@@ -80,5 +80,6 @@ def improvement_plan_from_data(data: dict) -> ImprovementPlan:
         defined_problem=data.get("defined_problem", ""),
         method=data.get("method", ""),
         reasoning=data.get("reasoning", ""),
+        recommended_gases=data.get("recommended_gases", []),
         updated_at=data.get("updated_at"),
     )

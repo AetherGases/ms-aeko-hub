@@ -402,7 +402,28 @@ def test_get_report_returns_the_textual_plan(patched_user_service):
         "defined_problem": "high scope 1 emissions",
         "solving_method": "replace the boiler fleet",
         "reasoning": "direct combustion dominates the inventory",
+        "recommended_gases": [],
     }
+
+
+def test_get_report_returns_the_recommended_gases_of_the_plan(patched_user_service):
+    """Verify that get report returns the recommended gases of the plan."""
+    gas = {
+        "scope": 1,
+        "emission": 120.5,
+        "reduction_percentage": 35.25,
+        "name": "Biometano",
+    }
+    plan = ImprovementPlan(
+        id_external_inventory=502, id_external_company=90, recommended_gases=[gas]
+    )
+
+    response = build_client(StubReportService(plan=plan)).get(
+        GET_ROUTE.format(id_external_inventory=502)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recommended_gases"] == [gas]
 
 
 def test_get_report_asks_for_the_inventory_identifier(patched_user_service):
