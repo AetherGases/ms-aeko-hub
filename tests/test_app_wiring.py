@@ -576,3 +576,55 @@ def test_docs_are_enabled_when_env_is_development(api_main, monkeypatch):
         assert client.get("/docs").status_code == 200
         assert client.get("/redoc").status_code == 200
         assert client.get("/openapi.json").status_code == 200
+
+
+FAILURE_SENTENCE = "Não consegui salvar a alteração ({tools}). Peça novamente."
+
+
+def registered_tools(api_main, fake_sdk):
+    """Start the application and return the tools it registered per agent."""
+    with TestClient(api_main.app):
+        return {
+            agent: [wrapped.tool for wrapped in tools]
+            for agent, tools in fake_sdk.RUNTIME.tools.items()
+        }
+
+
+def test_every_writer_is_flagged_with_the_failure_sentence(api_main, fake_sdk):
+    """Verify that update_user_profile carries is_writing and the env sentence."""
+    tools = registered_tools(api_main, fake_sdk)
+
+    (writer,) = tools["Roteador"]
+    assert writer.name == "update_user_profile"
+    assert writer.metadata["is_writing"] is True
+    assert writer.metadata["write_failure_message"] == FAILURE_SENTENCE
+
+
+def test_read_tools_are_left_unflagged(api_main, fake_sdk):
+    """Verify that only update_user_profile is flagged across every agent."""
+    tools = registered_tools(api_main, fake_sdk)
+
+    flagged = {
+        tool.name
+        for agent_tools in tools.values()
+        for tool in agent_tools
+        if (tool.metadata or {}).get("is_writing")
+    }
+    unsentenced = [
+        tool.name
+        for agent_tools in tools.values()
+        for tool in agent_tools
+        if "write_failure_message" in (tool.metadata or {})
+        and not (tool.metadata or {}).get("is_writing")
+    ]
+    assert flagged == {"update_user_profile"}
+    assert unsentenced == []
+
+
+def test_startup_fails_without_the_write_failure_message(api_main, monkeypatch):
+    """Verify that a missing failure sentence stops the application from starting."""
+    monkeypatch.setattr(api_main, "AEKO_WRITE_FAILURE_MESSAGE", None)
+
+    with pytest.raises(RuntimeError, match="AEKO_WRITE_FAILURE_MESSAGE"):
+        with TestClient(api_main.app):
+            pass

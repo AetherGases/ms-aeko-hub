@@ -164,3 +164,36 @@ def test_chatgpt_get_plan_returns_the_same_catalog_for_the_same_company(monkeypa
             "updated_at": "2026-01-01T00:00:00Z",
         }
     ]
+
+
+def test_chatgpt_wrapping_builds_and_runs_with_a_flagged_writer():
+    """Verify that a writer flagged for the Consolidador still wraps and executes."""
+    from langchain_core.tools import StructuredTool
+
+    from cmd.api.acl.open_ai import identity
+    from cmd.api.acl.open_ai.wrappers import wrap_chatgpt_tools
+
+    received = []
+
+    def save(id_external_user: int, role: str):
+        """Record the injected user and the role."""
+        received.append((id_external_user, role))
+        return {"role": role}
+
+    writer = StructuredTool.from_function(
+        name="save",
+        description="Save a role.",
+        func=save,
+        metadata={"is_writing": True, "write_failure_message": "{tools}"},
+    )
+
+    (wrapped,) = wrap_chatgpt_tools([writer])
+    token = identity.bind_id_external_user(12345)
+    try:
+        result = wrapped.invoke({"role": "gestor"})
+    finally:
+        identity.reset_id_external_user(token)
+
+    assert result == {"role": "gestor"}
+    assert received == [(12345, "gestor")]
+    assert set(wrapped.args) == {"role"}

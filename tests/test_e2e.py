@@ -1174,3 +1174,49 @@ def test_the_stored_turn_no_longer_carries_what_it_cost(live_app):
 
     turn = session_repository.get_session_messages("s1")[-1]
     assert set(vars(turn)) == {"input", "output", "submitted_at"}
+
+
+class ProfileUserRepository(InMemoryUserRepository):
+    """User repository whose profile update is real, so a write can be observed."""
+
+    def update_user_profile(self, id_external_user, *, role=None, usecase=None):
+        """Change only the supplied profile fields on the stored user."""
+        user = self.get_user(id_external_user)
+        user.role = role or user.role
+        user.usecase = usecase or user.usecase
+        return user
+
+
+@pytest.fixture
+def profile_app(live_app, fake_sdk):
+    """The conversation application with a profile writer queued for the Roteador."""
+    from cmd.api.tools import mongo_tools
+
+    client, _, user_repository, _ = live_app
+    repository = ProfileUserRepository(users=user_repository.users)
+    mongo_tools.configure(users=UserService(repository))
+    fake_sdk.AekoMessenger.next_tool_calls = (
+        ("Roteador", UPDATE_USER_PROFILE_TOOL_NAME, {"role": "gestor"}),
+    )
+    return client, repository.users[ID_EXTERNAL_USER]
+
+
+def test_a_rejected_turn_leaves_the_user_profile_unchanged(profile_app, fake_sdk):
+    """Verify that a profile update staged in a rejected turn is never committed."""
+    client, user = profile_app
+    fake_sdk.AekoMessenger.next_approved = False
+
+    response = send(client, id_session="s1", input="Sou gestor agora")
+
+    assert response.status_code == 422
+    assert user.role == "analyst"
+
+
+def test_an_approved_turn_updates_the_user_profile(profile_app):
+    """Verify that the approved turn commits the staged write for the bound user."""
+    client, user = profile_app
+
+    response = send(client, id_session="s1", input="Sou gestor agora")
+
+    assert response.status_code == 200, response.json()
+    assert user.role == "gestor"

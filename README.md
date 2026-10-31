@@ -110,6 +110,7 @@ Empty optional model and token settings use SDK defaults.
 | Log colors | JSON strings with ANSI escapes; `INDENT` keeps quoted spaces |
 | `AETHER_WEB_SITE_URL` | URL used by the Tavily site-map tool |
 | `AEKO_MCP_WARM_UP` | `false` opens MCP sessions on first use |
+| `AEKO_WRITE_FAILURE_MESSAGE` | Required. pt-BR sentence with `{tools}` appended to an answer when a write is lost; startup fails without it |
 | Chroma | Tenant, database, API key, and the `gases-info` embedding model |
 | Climatiq | Search and estimate over HTTP |
 | Finance prompts | Named placeholders such as `{ROI_HORIZON_MONTHS}` |
