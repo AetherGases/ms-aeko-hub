@@ -23,6 +23,7 @@ SERVICE_METHODS = [
     "create_session",
     "save_message",
     "update_name",
+    "delete_session",
     "get_sessions_updated_since",
 ]
 
@@ -312,6 +313,26 @@ def test_update_name_wraps_database_failures_in_runtime_error():
 
     with pytest.raises(RuntimeError, match="boom"):
         repository.update_name(ID_SESSION, "new name")
+
+
+def test_delete_session_only_matches_a_session_without_history():
+    """Verify that delete session never matches a session holding more than one message."""
+    collection = StubCollection()
+    repository, _ = build_repository(collection)
+
+    repository.delete_session(ID_SESSION)
+
+    (query,) = collection.call_args("delete_one")[0]
+    assert {"_id": ObjectId(ID_SESSION)} in query["$or"]
+    assert query["messages.1"] == {"$exists": False}
+
+
+def test_delete_session_wraps_database_failures_in_runtime_error():
+    """Verify that delete session wraps database failures in runtime error."""
+    repository, _ = build_repository(StubCollection(error=OSError("boom")))
+
+    with pytest.raises(RuntimeError, match="boom"):
+        repository.delete_session(ID_SESSION)
 
 
 def test_message_from_data_reads_the_stored_field_names():

@@ -112,6 +112,14 @@ class Repository(IRepository):
         except Exception as e:
             raise RuntimeError(f"Error updating session name in database: {e}")
 
+    @logged(Module.DATABASE, "session.delete_session")
+    def delete_session(self, id_session: str) -> None:
+        """Delete a session that holds at most one message."""
+        try:
+            self.db["session"].delete_one(q.get_delete_session_filter(id_session))
+        except Exception as e:
+            raise RuntimeError(f"Error deleting session in database: {e}")
+
     @logged(Module.DATABASE, "session.get_sessions_updated_since")
     def get_sessions_updated_since(self, since) -> list[Session]:
         """Retrieve sessions whose modification time is at or after the supplied instant."""

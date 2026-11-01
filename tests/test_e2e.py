@@ -179,6 +179,11 @@ class InMemorySessionRepository:
         self.created_names[id_session] = name
         self.sessions[id_session].name = name
 
+    def delete_session(self, id_session):
+        """Delete a session that holds at most one message."""
+        self.sessions.pop(id_session, None)
+        self.messages.pop(id_session, None)
+
 
 class InMemoryImprovementPlanRepository:
     def __init__(self, plans=None):

@@ -47,6 +47,11 @@ class IRepository(ABC):
         pass
 
     @abstractmethod
+    def delete_session(self, id_session: str) -> None:
+        """Delete a session that holds at most one message."""
+        pass
+
+    @abstractmethod
     def get_sessions_updated_since(self, since: datetime) -> list[Session]:
         """Retrieve sessions whose modification time is at or after the supplied instant."""
         pass
