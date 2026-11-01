@@ -58,49 +58,54 @@ class Service(IService):
             if is_new_session:
                 id_session = self.repository.create_session(id_user, user_repository)
 
-            self._validate_session_and_user_allowance(id_session, id_user)
+            try:
+                self._validate_session_and_user_allowance(id_session, id_user)
 
-            user = user_repository.get_user_by_id(id_user)
-            if not user:
-                raise ValueError(f"User with id_user {id_user} does not exist.")
+                user = user_repository.get_user_by_id(id_user)
+                if not user:
+                    raise ValueError(f"User with id_user {id_user} does not exist.")
 
-            id_external_company = _metric_company(user)
+                id_external_company = _metric_company(user)
 
-            memories = [
-                memory
-                for memory in user_repository.get_user_memories(id_user)
-                if memory.is_valid()
-            ]
+                memories = [
+                    memory
+                    for memory in user_repository.get_user_memories(id_user)
+                    if memory.is_valid()
+                ]
 
-            session = self.repository.get_session(id_session)
-            session.messages = self._conversation_messages(id_session)
+                session = self.repository.get_session(id_session)
+                session.messages = self._conversation_messages(id_session)
 
-            messenger = aeko_messenger_factory(user, memories)
+                messenger = aeko_messenger_factory(user, memories)
 
-            response = _run(
-                messenger,
-                input,
-                aeko_session_factory(session),
-                current_id_request(),
-                user,
-            )
+                response = _run(
+                    messenger,
+                    input,
+                    aeko_session_factory(session),
+                    current_id_request(),
+                    user,
+                )
 
-            record_aeko_metrics(
-                response.aeko_metrics,
-                id_external_user=user.id_external_user,
-                id_external_company=id_external_company,
-            )
+                record_aeko_metrics(
+                    response.aeko_metrics,
+                    id_external_user=user.id_external_user,
+                    id_external_company=id_external_company,
+                )
 
-            message = _internal_message_from_aeko_message(response.message)
+                message = _internal_message_from_aeko_message(response.message)
 
-            self.repository.save_message(id_session, message)
-            self._refresh_window(id_session, id_user, session.messages, message)
+                self.repository.save_message(id_session, message)
+                self._refresh_window(id_session, id_user, session.messages, message)
 
-            if is_new_session:
-                session.name = _session_name_from(input)
-                self.repository.update_name(id_session, session.name)
+                if is_new_session:
+                    session.name = _session_name_from(input)
+                    self.repository.update_name(id_session, session.name)
 
-            return SendMessageResult(message, session)
+                return SendMessageResult(message, session)
+            except Exception:
+                if is_new_session:
+                    self.repository.delete_session(id_session)
+                raise
         except (ValueError, GuardrailRejectedError) as e:
             raise e
         except Exception as e:

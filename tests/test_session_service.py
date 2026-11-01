@@ -208,6 +208,10 @@ class FakeSessionRepository:
         self._guard()
         self.names[id_session] = name
 
+    def delete_session(self, id_session):
+        """Delete a session that holds at most one message."""
+        self.sessions.pop(id_session)
+
 
 class StubUserRepository:
     def __init__(self, user=USER, memories=None):
@@ -670,6 +674,27 @@ def test_send_message_does_not_rename_an_existing_session():
     send(service)
 
     assert repository.names == {}
+
+
+def test_send_message_deletes_a_brand_new_session_when_its_first_message_fails():
+    """Verify that a failed first message leaves no nameless session behind."""
+    service, repository = build_service()
+
+    with pytest.raises(RuntimeError, match="sdk down"):
+        send(service, id_session="", messengers=failing_messengers(OSError("sdk down")))
+
+    assert "session-2" not in repository.sessions
+    assert repository.names == {}
+
+
+def test_send_message_keeps_an_existing_session_when_a_message_fails():
+    """Verify that a failed message never deletes a session that already existed."""
+    service, repository = build_service()
+
+    with pytest.raises(RuntimeError, match="sdk down"):
+        send(service, messengers=failing_messengers(OSError("sdk down")))
+
+    assert ID_SESSION in repository.sessions
 
 
 def test_send_message_raises_when_no_reviewer_approved_a_draft():

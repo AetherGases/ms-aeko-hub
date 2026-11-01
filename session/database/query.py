@@ -83,6 +83,11 @@ def get_update_name_query(name: str) -> dict:
     return {"$set": {"name": name, "updated_at": datetime.utcnow()}}
 
 
+def get_delete_session_filter(id_session: str) -> dict:
+    """Match the session only while it holds at most one message, so history is never deleted."""
+    return {**get_session_filter(id_session), "messages.1": {"$exists": False}}
+
+
 def get_create_session_query(id_user: str) -> dict:
     """Build an empty session document with a normalized user identifier and timestamps."""
     now = datetime.utcnow()

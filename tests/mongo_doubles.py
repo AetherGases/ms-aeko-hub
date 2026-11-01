@@ -54,6 +54,11 @@ class StubCollection:
             "UpdateResult", (), {"matched_count": matched, "modified_count": modified}
         )()
 
+    def delete_one(self, query):
+        """Record a document deletion and return a simulated delete result."""
+        self._record("delete_one", query)
+        return type("DeleteResult", (), {"deleted_count": 1})()
+
     def replace_one(self, query, replacement, upsert=False):
         """Record a document replacement and return a simulated replace result."""
         self._record("replace_one", query, replacement, upsert)
