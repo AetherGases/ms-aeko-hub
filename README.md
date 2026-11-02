@@ -57,34 +57,8 @@ and MCP edge in front of that core.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  subgraph clients [Clients]
-    Apps[Aether apps]
-    GPT[ChatGPT]
-  end
+<img width="1232" height="1904" alt="image" src="https://github.com/user-attachments/assets/dcfd1a9b-cddc-4c8f-93d4-a1590c73d1c7" />
 
-  subgraph gateway [aether-ai-gateway]
-    Main["cmd/api/main.py"]
-    HTTP[internal/http]
-    ACL[cmd/api/acl]
-    Tools[cmd/api/tools]
-    Domain[Domain packages]
-    Out[cmd/api/integrations]
-  end
-
-  Apps --> Main
-  GPT --> ACL
-  Main --> HTTP
-  Main --> ACL
-  HTTP --> Domain
-  ACL --> Tools
-  Tools --> Domain
-  Tools --> Out
-  Main --> SDK[Aeko SDK]
-  Domain --> Mongo[(MongoDB)]
-  Domain --> Redis[(Redis)]
-```
 
 `cmd/api/main.py` composes the FastAPI app, database, cache, tools, and
 lifespan. Handlers never import the SDK. Identity is bound from the
