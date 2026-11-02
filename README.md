@@ -57,7 +57,89 @@ and MCP edge in front of that core.
 
 ## Architecture
 
-<img width="1232" height="1904" alt="image" src="https://github.com/user-attachments/assets/dcfd1a9b-cddc-4c8f-93d4-a1590c73d1c7" />
+```mermaid
+flowchart LR
+  subgraph callers [Who calls the hub]
+    Front[Aether apps]
+    GPT[ChatGPT]
+    Inv[aether-ms-inventory]
+  end
+
+  Kong[Kong /hub]
+
+  subgraph hub [ms-aeko-hub]
+    Chat["POST /ai/user/session/message"]
+    Report["POST /ai/report"]
+    Reads["GET users, sessions, reports, cost<br/>inventory-upload"]
+    OAuth["/ai/oauth/* and /.well-known/*"]
+    MCP["/ai/mcp/ (ask_aeko and ChatGPT tools)"]
+    Tools[cmd/api/tools]
+    Worker[cmd/memory_generator_worker]
+  end
+
+  subgraph sdk [Aeko SDK, in process]
+    Messenger[AekoMessenger]
+    Analyzer[AekoInventoryAnalyzer]
+  end
+
+  subgraph data [Databases]
+    Mongo[("MongoDB<br/>user, user_memory, session,<br/>improvement_plan, aeko_metrics, hub_metrics")]
+    Redis[("Redis<br/>session windows, OAuth codes and sessions,<br/>rate limits, upload tickets")]
+  end
+
+  subgraph out [Services the hub calls]
+    Auth[aether-ms-auth]
+    InvOut[aether-ms-inventory]
+    Calc[aether-ms-calculator]
+    Cloud[aether-ms-cloudinary]
+    Ext["Climatiq, Tavily,<br/>Chroma Cloud (MCP child)"]
+    Gemini[Gemini]
+    OTLP[Dynatrace OTLP]
+  end
+
+  Front --> Kong
+  GPT --> Kong
+  Inv -- authentication-key --> Kong
+  Kong --> Chat
+  Kong --> Reads
+  Kong --> Report
+  Kong --> OAuth
+  Kong --> MCP
+
+  Chat --> Messenger
+  MCP -- ask_aeko --> Messenger
+  Report --> Analyzer
+  Worker --> Messenger
+  Messenger --> Tools
+  Messenger --> Gemini
+  Analyzer --> Gemini
+
+  Chat --> Mongo
+  Chat --> Redis
+  Reads --> Mongo
+  Reads --> Redis
+  Report --> Mongo
+  OAuth --> Redis
+  Tools --> Mongo
+  Worker --> Mongo
+  Worker --> Redis
+
+  Chat -. JWT .-> Auth
+  Reads -. JWT .-> Auth
+  OAuth -- sign-in --> Auth
+  MCP -. token .-> Auth
+  MCP --> Tools
+  Tools --> InvOut
+  Tools --> Calc
+  Tools --> Ext
+  Reads --> Cloud
+  hub -. metrics .-> OTLP
+```
+
+Solid arrows into the Aeko SDK are the only places the hub runs agents: the
+chat route, the `ask_aeko` MCP tool, the report route and the memory worker.
+`aether-ms-inventory` calls `POST /ai/report` with the `authentication-key`
+header after a sheet is uploaded; every other route takes the `ms-auth` JWT.
 
 
 `cmd/api/main.py` composes the FastAPI app, database, cache, tools, and
